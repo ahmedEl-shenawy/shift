@@ -1,0 +1,22 @@
+# Unity
+ShiftGame/[Ll]ibrary/
+ShiftGame/[Tt]emp/
+ShiftGame/[Oo]bj/
+ShiftGame/[Ll]ogs/
+ShiftGame/[Uu]ser[Ss]ettings/
+ShiftGame/[Bb]uild/
+ShiftGame/[Bb]uilds/
+ShiftGame/MemoryCaptures/
+ShiftGame/*.csproj
+ShiftGame/*.sln
+ShiftGame/*.slnx
+ShiftGame/.vs/
+ShiftGame/.vscode/
+ShiftGame/.idea/
+*.pidb.meta
+*.pdb.meta
+crashlytics-build.properties
+
+# Build output (upload these to itch.io, don't commit them)
+Builds/
+*.zip
