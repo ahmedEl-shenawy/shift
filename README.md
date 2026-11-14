@@ -4,7 +4,7 @@
 
 A 3D puzzle-platformer made in Unity for **[GitHub Game Off 2026](https://itch.io/jam/game-off-2026)**. The jam theme is **SHIFT**.
 
-![Title screen](Screenshots/title.png)
+![SHIFT cover art](Screenshots/cover_1260x1000.png)
 
 ## The idea
 
@@ -48,6 +48,7 @@ The sky, lighting, sun angle, fog, particles, and music all crossfade when you s
 - **No imported art or audio.** Every mesh (rounded blocks, gems, portal rings, orbs, spikes, the player) is generated in code (`MeshFactory.cs`). Every sound effect and both music tracks are synthesised at startup (`Synth.cs`).
 - The scene holds a single `GameManager` that builds the camera, lights, post-processing, UI, and levels at runtime.
 - Levels are ASCII grids with multiple layers. See the format notes at the top of `Assets/Scripts/Game/Levels.cs`. Adding a level is a matter of drawing it.
+- The cover art is rendered in-engine: `AgentScripts/Cover.cs` renders the same shot in Day and in Night, and `AgentScripts/make_cover.ps1` splits them along a diagonal and adds the title.
 - `LevelGenerator.cs` builds endless levels and writes out a scripted solution for each one. `ShiftGame/AgentScripts/Bot.cs` is a playtest bot that drives simulated input. It completes all 8 campaign levels and plays the generated solutions to verify that endless levels can be beaten.
 
 ## Project layout

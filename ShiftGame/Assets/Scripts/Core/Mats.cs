@@ -6,6 +6,9 @@ public static class Mats
     static Material lit, trans, particle;
     static Texture2D softDot;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics() { softDot = null; lit = null; trans = null; particle = null; }
+
     static Material Base(ref Material cache, string res, string fallbackShader)
     {
         if (cache == null)

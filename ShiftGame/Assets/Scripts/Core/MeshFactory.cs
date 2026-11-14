@@ -6,6 +6,12 @@ public static class MeshFactory
 {
     static readonly Dictionary<string, Mesh> cache = new Dictionary<string, Mesh>();
 
+    // Meshes are runtime objects: Unity destroys them when Play Mode ends, so never reuse them across sessions.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetCache() => cache.Clear();
+
+    static bool TryGet(string key, out Mesh m) => cache.TryGetValue(key, out m) && m != null;
+
     static Mesh Finish(string key, List<Vector3> v, List<Vector3> n, List<int> t, List<Vector2> uv = null, bool recalcNormals = false)
     {
         var m = new Mesh { name = key };
@@ -40,7 +46,7 @@ public static class MeshFactory
     public static Mesh RoundedBox(Vector3 size, float radius, int seg = 3)
     {
         string key = $"rb_{size.x:F3}_{size.y:F3}_{size.z:F3}_{radius:F3}_{seg}";
-        if (cache.TryGetValue(key, out var cached)) return cached;
+        if (TryGet(key, out var cached)) return cached;
 
         Vector3 h = size * 0.5f;
         radius = Mathf.Min(radius, Mathf.Min(h.x, Mathf.Min(h.y, h.z)) * 0.999f);
@@ -90,7 +96,7 @@ public static class MeshFactory
     public static Mesh Torus(float R, float r, int segU = 40, int segV = 12)
     {
         string key = $"torus_{R:F3}_{r:F3}_{segU}_{segV}";
-        if (cache.TryGetValue(key, out var cached)) return cached;
+        if (TryGet(key, out var cached)) return cached;
         var verts = new List<Vector3>();
         var norms = new List<Vector3>();
         var tris = new List<int>();
@@ -145,7 +151,7 @@ public static class MeshFactory
     public static Mesh Octahedron(float rx, float ry)
     {
         string key = $"oct_{rx:F3}_{ry:F3}";
-        if (cache.TryGetValue(key, out var cached)) return cached;
+        if (TryGet(key, out var cached)) return cached;
         Vector3 U = Vector3.up * ry, D = Vector3.down * ry;
         Vector3[] ring = { Vector3.right * rx, Vector3.forward * rx, Vector3.left * rx, Vector3.back * rx };
         var faces = new List<Vector3[]>();
@@ -162,7 +168,7 @@ public static class MeshFactory
     public static Mesh Pyramid(float baseSize, float height)
     {
         string key = $"pyr_{baseSize:F3}_{height:F3}";
-        if (cache.TryGetValue(key, out var cached)) return cached;
+        if (TryGet(key, out var cached)) return cached;
         float h = baseSize * 0.5f;
         Vector3 apex = new Vector3(0, height, 0);
         Vector3 a = new Vector3(-h, 0, -h), b = new Vector3(h, 0, -h), c = new Vector3(h, 0, h), d = new Vector3(-h, 0, h);
@@ -178,7 +184,7 @@ public static class MeshFactory
     public static Mesh Sphere(float r, int seg = 16)
     {
         string key = $"sph_{r:F3}_{seg}";
-        if (cache.TryGetValue(key, out var cached)) return cached;
+        if (TryGet(key, out var cached)) return cached;
         var verts = new List<Vector3>();
         var norms = new List<Vector3>();
         var tris = new List<int>();
