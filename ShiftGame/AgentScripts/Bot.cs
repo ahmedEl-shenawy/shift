@@ -81,6 +81,42 @@ public static class Bot
         return false;
     }
 
+    static async Task<bool> OrbFar(int z, float x, float dist)
+    {
+        var o = OrbAtZ(z);
+        if (o == null) { log.AppendLine($"  no orb at z={z}"); return false; }
+        float end = Time.time + 25f;
+        while (Time.time < end)
+        {
+            if (!Playing) return false;
+            if (Mathf.Abs(o.transform.position.x - x) >= dist) return true;
+            await Frame();
+        }
+        log.AppendLine("  timeout waiting for far orb");
+        return false;
+    }
+
+    /// <summary>Plays a generated level using the solution the generator wrote for it.</summary>
+    public static async Task<string> RunGenerated(int level) => await Run(level, Levels.Get(level).solution);
+
+    /// <summary>Plays generated levels [from, to) and summarises the results.</summary>
+    public static async Task<string> RunRange(int from, int to)
+    {
+        var sb = new StringBuilder();
+        int pass = 0;
+        for (int l = from; l < to; l++)
+        {
+            string r = await RunGenerated(l);
+            bool ok = r.Contains("COMPLETE");
+            if (ok) pass++;
+            sb.Append($"L{l + 1}: {(ok ? "PASS" : "FAIL")}");
+            if (!ok) sb.AppendLine().Append(r);
+            sb.AppendLine();
+        }
+        sb.Append($"{pass}/{to - from} passed");
+        return sb.ToString();
+    }
+
     public static async Task<string> Run(int level, string script)
     {
         log = new StringBuilder();
@@ -103,6 +139,20 @@ public static class Bot
                     case "jump": ok = await Jump(F(a[1]), F(a[2]), a.Length > 3 ? F(a[3]) : -1); break;
                     case "shift": GameInput.SimPressShift(); await Frame(); await Frame(); break;
                     case "orbi": ok = await WaitOrb(int.Parse(a[1]), F(a[2]), F(a[3]), a.Length > 4 ? int.Parse(a[4]) : 0, true); break;
+                    case "phase":
+                        {
+                            var want = a[1] == "D" ? Phase.Day : Phase.Night;
+                            if (PhaseState.Current != want)
+                            {
+                                GameInput.SimPressShift();
+                                float until = Time.time + 0.4f;
+                                while (PhaseState.Current != want && Time.time < until) await Frame();
+                            }
+                            ok = PhaseState.Current == want;
+                            if (!ok) log.AppendLine("  shift refused");
+                            break;
+                        }
+                    case "orbfar": ok = await OrbFar(int.Parse(a[1]), F(a[2]), F(a[3])); break;
                     case "wait": await Wait(F(a[1])); break;
                     case "orb": ok = await WaitOrb(int.Parse(a[1]), F(a[2]), F(a[3]), a.Length > 4 ? int.Parse(a[4]) : 0); break;
                 }

@@ -7,12 +7,16 @@ using UnityEngine;
 ///   W  neutral wall (2 high) d / n  day-only / night-only wall (2 high)
 ///   S  start   E  exit portal   *  shard   ^  spikes
 ///   p / q  day / night orb patrolling along X      v / w  day / night orb patrolling along Z
+///   C  checkpoint flag (respawn point)
 /// </summary>
 public class LevelDef
 {
     public string name;
     public string hint;
     public string[][] layers;
+    public float orbSpeed = 2.6f;
+    public bool generated;
+    public string solution;   // scripted route for the playtest bot (generated levels only)
     public LevelDef(string name, string hint, params string[][] layers)
     {
         this.name = name; this.hint = hint; this.layers = layers;
@@ -61,6 +65,23 @@ public class LevelGrid
 
 public static class Levels
 {
+    public static int HandmadeCount => All.Length;
+
+    static readonly System.Collections.Generic.Dictionary<int, LevelDef> generatedCache =
+        new System.Collections.Generic.Dictionary<int, LevelDef>();
+
+    /// <summary>Levels 0..7 are the handmade campaign; every index beyond that is generated (endless).</summary>
+    public static LevelDef Get(int index)
+    {
+        if (index < All.Length) return All[index];
+        if (!generatedCache.TryGetValue(index, out var def))
+        {
+            def = LevelGenerator.Generate(index);
+            generatedCache[index] = def;
+        }
+        return def;
+    }
+
     public static readonly LevelDef[] All =
     {
         new LevelDef("First Shift",

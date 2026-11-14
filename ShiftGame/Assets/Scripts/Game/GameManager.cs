@@ -34,8 +34,12 @@ public class GameManager : MonoBehaviour
     readonly List<Orb> orbs = new List<Orb>();
     readonly List<Shard> shards = new List<Shard>();
     readonly List<Vector3> spikes = new List<Vector3>();
+    readonly List<Checkpoint> checkpoints = new List<Checkpoint>();
+    Checkpoint activeCheckpoint;
     Vector3 levelCenter;
-    float levelSize;
+    float levelSize, levelWidth;
+    Vector3 levelMin, levelMax;
+    float orbSpeed = 2.6f;
     public int shardsCollected { get; private set; }
     public int ShardTotal => shards.Count;
 
@@ -44,7 +48,7 @@ public class GameManager : MonoBehaviour
     float totalTime; int totalShifts, totalDeaths;
 
     // misc
-    float shiftCooldown, dyingTimer, titleShiftTimer;
+    float shiftCooldown, dyingTimer, titleShiftTimer, shiftBuffer;
     int selectedLevel, unlocked;
     float fadeA = 1f;
     bool transitioning;
@@ -75,7 +79,14 @@ public class GameManager : MonoBehaviour
 
         sfx = gameObject.AddComponent<AudioFx>();
 
-        unlocked = Mathf.Clamp(PlayerPrefs.GetInt(PrefKey, 1), 1, Levels.All.Length);
+        unlocked = Mathf.Clamp(PlayerPrefs.GetInt(PrefKey, 1), 1, 9999);
+        selectedLevel = unlocked - 1;
+    }
+
+    public void DebugUnlock(int n)
+    {
+        unlocked = Mathf.Max(1, n);
+        PlayerPrefs.SetInt(PrefKey, unlocked);
         selectedLevel = unlocked - 1;
     }
 
@@ -212,14 +223,15 @@ public class GameManager : MonoBehaviour
     void ClearLevel()
     {
         if (levelRoot != null) Destroy(levelRoot.gameObject);
-        blocks.Clear(); phaseBlocks.Clear(); orbs.Clear(); shards.Clear(); spikes.Clear();
+        blocks.Clear(); phaseBlocks.Clear(); orbs.Clear(); shards.Clear(); spikes.Clear(); checkpoints.Clear(); activeCheckpoint = null;
         player = null; portal = null;
     }
 
     void BuildLevel(int index)
     {
         ClearLevel();
-        var def = Levels.All[index];
+        var def = Levels.Get(index);
+        orbSpeed = def.orbSpeed;
         grid = new LevelGrid(def);
         levelRoot = new GameObject("Level " + (index + 1)).transform;
         PhaseState.Set(Phase.Day, true);
@@ -241,6 +253,7 @@ public class GameManager : MonoBehaviour
                 case 'E': AddPortal(p); break;
                 case '*': AddShard(p); break;
                 case '^': AddSpikes(p); break;
+                case 'C': AddCheckpoint(p); break;
                 case 'p': AddOrb(x, k, z, Phase.Day, new Vector2Int(1, 0)); break;
                 case 'q': AddOrb(x, k, z, Phase.Night, new Vector2Int(1, 0)); break;
                 case 'v': AddOrb(x, k, z, Phase.Day, new Vector2Int(0, 1)); break;
@@ -249,6 +262,8 @@ public class GameManager : MonoBehaviour
         }
         levelCenter = (min + max) * 0.5f;
         levelSize = Mathf.Max(max.x - min.x, max.z - min.z);
+        levelWidth = max.x - min.x;
+        levelMin = min; levelMax = max;
 
         foreach (var b in phaseBlocks) b.Apply(true, Vector3.zero);
         if (portal != null) portal.SetOpen(shards.Count == 0, true);
@@ -343,6 +358,20 @@ public class GameManager : MonoBehaviour
         shards.Add(go.AddComponent<Shard>());
     }
 
+    void AddCheckpoint(Vector3 p)
+    {
+        var go = new GameObject("Checkpoint");
+        go.transform.SetParent(levelRoot, false);
+        go.transform.position = p;
+        MeshFactory.Part("Base", go.transform, MeshFactory.RoundedBox(new Vector3(0.3f, 0.08f, 0.3f), 0.03f, 1), padMat, new Vector3(0, 0.04f, 0));
+        MeshFactory.Part("Pole", go.transform, MeshFactory.RoundedBox(new Vector3(0.06f, 1.0f, 0.06f), 0.025f, 1), padMat, new Vector3(0, 0.5f, 0));
+        var flag = MeshFactory.Part("Flag", go.transform, MeshFactory.RoundedBox(new Vector3(0.36f, 0.22f, 0.04f), 0.02f, 1), portalLocked, new Vector3(0.19f, 0.86f, 0));
+        var cp = go.AddComponent<Checkpoint>();
+        cp.flag = flag.GetComponent<Renderer>();
+        cp.activeMat = shardMat;
+        checkpoints.Add(cp);
+    }
+
     void AddSpikes(Vector3 p)
     {
         var go = new GameObject("Spikes");
@@ -363,7 +392,7 @@ public class GameManager : MonoBehaviour
         go.transform.SetParent(levelRoot, false);
         var orb = go.AddComponent<Orb>();
         orb.phase = ph; orb.grid = grid; orb.layer = k;
-        orb.cell = new Vector2Int(x, z); orb.dir = dir; orb.standY = k - 1;
+        orb.cell = new Vector2Int(x, z); orb.dir = dir; orb.standY = k - 1; orb.speed = orbSpeed;
         orb.active = ph == Phase.Day ? orbDay : orbNight;
         orb.ghost = ph == Phase.Day ? orbDayGhost : orbNightGhost;
         var coreGo = MeshFactory.Part("Core", go.transform, MeshFactory.Sphere(0.24f, 18), orb.active, Vector3.zero, false);
@@ -380,11 +409,18 @@ public class GameManager : MonoBehaviour
     void AddIslands(int seed)
     {
         var rng = new System.Random(seed * 31 + 7);
-        for (int i = 0; i < 16; i++)
+        int count = 16 + (int)(levelSize * 0.6f);
+        for (int i = 0; i < count; i++)
         {
-            float ang = (float)rng.NextDouble() * Mathf.PI * 2;
-            float dist = levelSize * 0.5f + 6 + (float)rng.NextDouble() * 18;
-            var p = levelCenter + new Vector3(Mathf.Cos(ang) * dist, -4 - (float)rng.NextDouble() * 10, Mathf.Sin(ang) * dist);
+            Vector3 p;
+            int guard = 0;
+            do
+            {
+                p = new Vector3(
+                    Mathf.Lerp(levelMin.x - 18, levelMax.x + 18, (float)rng.NextDouble()),
+                    levelMin.y - 4 - (float)rng.NextDouble() * 10,
+                    Mathf.Lerp(levelMin.z - 14, levelMax.z + 14, (float)rng.NextDouble()));
+            } while (guard++ < 20 && p.x > levelMin.x - 4 && p.x < levelMax.x + 4 && p.z > levelMin.z - 4 && p.z < levelMax.z + 4);
             var s = new Vector3(1 + (float)rng.NextDouble() * 3, 0.8f + (float)rng.NextDouble() * 2.5f, 1 + (float)rng.NextDouble() * 3);
             var go = MeshFactory.Part("Island", levelRoot, MeshFactory.RoundedBox(s, 0.25f, 2), stoneMats[i % stoneMats.Length], p, false);
             go.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 90, 0);
@@ -437,7 +473,7 @@ public class GameManager : MonoBehaviour
     {
         Time.timeScale = 1f;
         state = State.Title;
-        BuildLevel(Levels.All.Length - 1);
+        BuildLevel(Levels.HandmadeCount - 1);
         rig.target = null;
         rig.focusPoint = levelCenter;
         rig.distance = 24f;
@@ -453,10 +489,14 @@ public class GameManager : MonoBehaviour
 
     void UpdateTitleLevel()
     {
-        var def = Levels.All[selectedLevel];
+        var def = Levels.Get(selectedLevel);
         string arrows = unlocked > 1 ? "<   " : "";
         string arrowsR = unlocked > 1 ? "   >" : "";
-        hud.titleLevel.text = $"{arrows}LEVEL {selectedLevel + 1}  -  {def.name.ToUpper()}{arrowsR}";
+        string tag = def.generated ? "  (ENDLESS)" : "";
+        hud.titleLevel.text = $"{arrows}LEVEL {selectedLevel + 1}  -  {def.name.ToUpper()}{tag}{arrowsR}";
+        hud.titleSub.text = unlocked > Levels.HandmadeCount
+            ? $"Day and night are one key apart.     Best: level {unlocked}"
+            : "Day and night are one key apart.";
     }
 
     void StartLevel(int index, bool resetStats)
@@ -468,19 +508,34 @@ public class GameManager : MonoBehaviour
         rig.orbit = false;
         rig.yaw = 30f;
         rig.pitch = 56f;
-        rig.distance = 12.5f + Mathf.Max(0, levelSize - 10) * 0.25f;
+        rig.distance = 12.5f + Mathf.Clamp(levelWidth - 8, 0, 10) * 0.3f;
         rig.Snap();
         if (resetStats) { levelTime = 0; levelShifts = 0; levelDeaths = 0; }
+        shiftBuffer = 0;
         shardsCollected = 0;
         state = State.Playing;
         hud.titleRoot.SetActive(false);
         hud.hudRoot.SetActive(true);
         hud.HideMessage();
-        var def = Levels.All[index];
-        hud.levelTitle.text = $"{index + 1}. {def.name.ToUpper()}";
+        var def = Levels.Get(index);
+        hud.levelTitle.text = def.generated ? $"{index + 1}. {def.name.ToUpper()}   -   ENDLESS" : $"{index + 1}. {def.name.ToUpper()}";
         hud.SetHint(def.hint);
         UpdateShardText();
         sfx.Play(sfx.levelStart, 0.7f, 0f);
+    }
+
+    void RespawnAtCheckpoint()
+    {
+        player.Teleport(activeCheckpoint.transform.position + Vector3.up * 0.05f);
+        player.visual.gameObject.SetActive(true);
+        player.visual.localScale = Vector3.one;
+        player.alive = true;
+        player.controllable = true;
+        rig.target = player.transform;
+        rig.Snap();
+        shiftBuffer = 0;
+        state = State.Playing;
+        sfx.Play(sfx.levelStart, 0.6f, 0f);
     }
 
     void UpdateShardText()
@@ -520,15 +575,17 @@ public class GameManager : MonoBehaviour
             case State.Playing: UpdatePlaying(dt); break;
             case State.Dying:
                 dyingTimer -= dt;
-                if (dyingTimer <= 0) StartCoroutine(Transition(() => StartLevel(levelIndex, false)));
+                if (dyingTimer <= 0)
+                {
+                    if (activeCheckpoint != null) StartCoroutine(Transition(RespawnAtCheckpoint));
+                    else StartCoroutine(Transition(() => StartLevel(levelIndex, false)));
+                }
                 break;
             case State.Complete:
                 if (GameInput.ConfirmPressed && hud.msgRoot.activeSelf)
                 {
                     sfx.Play(sfx.select, 0.6f);
-                    if (levelIndex + 1 < Levels.All.Length)
-                        StartCoroutine(Transition(() => StartLevel(levelIndex + 1, true)));
-                    else ShowVictory();
+                    StartCoroutine(Transition(() => StartLevel(levelIndex + 1, true)));
                 }
                 break;
             case State.Victory:
@@ -557,6 +614,12 @@ public class GameManager : MonoBehaviour
         Mats.SetColor(capMat, Color.Lerp(Palette.CapDay, Palette.CapNight, b), 0.05f * b);
         dayMoteMat.SetColor("_BaseColor", new Color(1f, 0.85f, 0.5f, 0.55f * (1 - b)));
         nightMoteMat.SetColor("_BaseColor", new Color(0.5f, 0.9f, 1f, 1f * b));
+        if (player != null)
+        {
+            var mp = player.transform.position + Vector3.up * 2;
+            dayMotes.transform.position = mp;
+            nightMotes.transform.position = mp;
+        }
     }
 
     void UpdateTitle(float dt)
@@ -572,6 +635,8 @@ public class GameManager : MonoBehaviour
             int prev = selectedLevel;
             if (GameInput.LeftPressed) selectedLevel = (selectedLevel - 1 + unlocked) % unlocked;
             if (GameInput.RightPressed) selectedLevel = (selectedLevel + 1) % unlocked;
+            if (GameInput.UpPressed) selectedLevel = Mathf.Min(unlocked - 1, selectedLevel + 10);
+            if (GameInput.DownPressed) selectedLevel = Mathf.Max(0, selectedLevel - 10);
             if (prev != selectedLevel) { sfx.Play(sfx.select, 0.6f); UpdateTitleLevel(); }
         }
         if (GameInput.ConfirmPressed)
@@ -592,13 +657,18 @@ public class GameManager : MonoBehaviour
             StartCoroutine(Transition(() => StartLevel(levelIndex, false)));
             return;
         }
-        if (GameInput.ShiftPressed) TryShift();
+        if (GameInput.ShiftPressed) shiftBuffer = 0.2f;
+        if (shiftBuffer > 0)
+        {
+            shiftBuffer -= dt;
+            if (shiftCooldown <= 0) { shiftBuffer = 0; TryShift(); }
+        }
 
         Vector3 p = player.transform.position;
         Vector3 chest = p + Vector3.up * 0.45f;
 
         // hazards
-        if (p.y < -7f) { Die(false); return; }
+        if (p.y < levelMin.y - 6f) { Die(false); return; }
         foreach (var s in spikes)
         {
             if (Mathf.Abs(p.x - s.x) < 0.55f && Mathf.Abs(p.z - s.z) < 0.55f && p.y < s.y + 0.4f && p.y > s.y - 0.6f)
@@ -615,6 +685,21 @@ public class GameManager : MonoBehaviour
         {
             if (s.collected) continue;
             if ((s.transform.position - chest).sqrMagnitude < 0.75f * 0.75f) Collect(s);
+        }
+
+        // checkpoints
+        foreach (var cp in checkpoints)
+        {
+            if (cp.active) continue;
+            var cpos = cp.transform.position;
+            if (new Vector2(p.x - cpos.x, p.z - cpos.z).sqrMagnitude < 0.8f * 0.8f && Mathf.Abs(p.y - cpos.y) < 1f)
+            {
+                if (activeCheckpoint != null) activeCheckpoint.SetActive(false);
+                cp.SetActive(true);
+                activeCheckpoint = cp;
+                sfx.Play(sfx.select, 0.8f, 0f);
+                hud.Flash(Palette.Shard, 0.08f);
+            }
         }
 
         // exit
@@ -799,11 +884,11 @@ public class GameManager : MonoBehaviour
         totalTime += levelTime; totalShifts += levelShifts; totalDeaths += levelDeaths;
         if (levelIndex + 2 > unlocked)
         {
-            unlocked = Mathf.Min(Levels.All.Length, levelIndex + 2);
+            unlocked = levelIndex + 2;
             PlayerPrefs.SetInt(PrefKey, unlocked);
             PlayerPrefs.Save();
         }
-        selectedLevel = Mathf.Min(levelIndex + 1, Levels.All.Length - 1);
+        selectedLevel = levelIndex + 1;
         StartCoroutine(CompleteSequence());
     }
 
@@ -826,17 +911,13 @@ public class GameManager : MonoBehaviour
         hud.Flash(Color.white, 0.4f);
         yield return new WaitForSeconds(0.4f);
         string body = $"Time   {FormatTime(levelTime)}\nShifts   {levelShifts}\nDeaths   {levelDeaths}";
-        bool last = levelIndex + 1 >= Levels.All.Length;
-        hud.ShowMessage("LEVEL COMPLETE", body, last ? "Press ENTER to finish" : "Press ENTER for the next level");
-    }
-
-    void ShowVictory()
-    {
-        state = State.Victory;
-        hud.ShowMessage("YOU MASTERED THE SHIFT",
-            $"All {Levels.All.Length} levels cleared!\n\nTotal time   {FormatTime(totalTime)}\nShifts   {totalShifts}      Deaths   {totalDeaths}",
-            "Thanks for playing!  Press ENTER");
-        sfx.Play(sfx.win, 1f, 0f);
+        bool campaignEnd = levelIndex + 1 == Levels.HandmadeCount;
+        if (campaignEnd)
+            hud.ShowMessage("CAMPAIGN COMPLETE",
+                $"Total time   {FormatTime(totalTime)}     Deaths   {totalDeaths}\n\nThe world keeps shifting.\nEndless levels begin now - each one harder.",
+                "Press ENTER to go deeper");
+        else
+            hud.ShowMessage($"LEVEL {levelIndex + 1} COMPLETE", body, $"Press ENTER for level {levelIndex + 2}");
     }
 
     static string FormatTime(float t)
@@ -862,6 +943,6 @@ public class GameManager : MonoBehaviour
     public string DebugDescribe()
     {
         return $"state={state} level={levelIndex} phase={PhaseState.Current} shards={shardsCollected}/{shards.Count} " +
-               $"player={(player ? player.transform.position.ToString("F2") : "none")} blocks={blocks.Count} orbs={orbs.Count} deaths={levelDeaths}";
+               $"player={(player ? player.transform.position.ToString("F2") : "none")} blocks={blocks.Count} orbs={orbs.Count} deaths={levelDeaths} cp={(activeCheckpoint ? activeCheckpoint.transform.position.ToString("F1") : "none")}";
     }
 }

@@ -230,3 +230,26 @@ public class Shockwave : MonoBehaviour
         if (t >= 1) { Destroy(mat); Destroy(gameObject); }
     }
 }
+
+public class Checkpoint : MonoBehaviour
+{
+    public Renderer flag;
+    public Material activeMat;
+    Material idleMat;
+    public bool active;
+
+    void Start() => idleMat = flag.sharedMaterial;
+
+    public void SetActive(bool a)
+    {
+        active = a;
+        if (idleMat == null) idleMat = flag.sharedMaterial;
+        flag.sharedMaterial = a ? activeMat : idleMat;
+    }
+
+    void Update()
+    {
+        if (!active) return;
+        flag.transform.localRotation = Quaternion.Euler(0, Mathf.Sin(Time.time * 4f) * 15f, 0);
+    }
+}

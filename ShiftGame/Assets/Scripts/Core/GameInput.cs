@@ -74,6 +74,14 @@ public static class GameInput
         (K != null && (K.aKey.wasPressedThisFrame || K.leftArrowKey.wasPressedThisFrame)) ||
         (G != null && G.dpad.left.wasPressedThisFrame);
 
+    public static bool UpPressed =>
+        (K != null && (K.wKey.wasPressedThisFrame || K.upArrowKey.wasPressedThisFrame)) ||
+        (G != null && G.dpad.up.wasPressedThisFrame);
+
+    public static bool DownPressed =>
+        (K != null && (K.sKey.wasPressedThisFrame || K.downArrowKey.wasPressedThisFrame)) ||
+        (G != null && G.dpad.down.wasPressedThisFrame);
+
     public static bool RightPressed =>
         (K != null && (K.dKey.wasPressedThisFrame || K.rightArrowKey.wasPressedThisFrame)) ||
         (G != null && G.dpad.right.wasPressedThisFrame);
