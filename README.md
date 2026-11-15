@@ -40,7 +40,12 @@ The sky, lighting, sun angle, fog, particles, and music all crossfade when you s
 | Jump | Space | A / Cross |
 | **Shift world** | **Shift** (or E / J) | X / Square, bumpers, RT |
 | Restart level | R | Select |
-| Pause | Esc / P | Start |
+| Pause menu | Esc / P (or the MENU button) | Start |
+| Restart from Level 1 | RESTART button, or Pause menu | Pause menu |
+
+Menus work with the mouse, the keyboard (W/S or arrows, Enter, Esc) and a gamepad. The title screen has Continue, a level select for every level you have reached, and New Game. The pause menu can restart the level, restart the whole run from Level 1 (it asks first), or return to the title.
+
+![Title menu](Screenshots/ui_title.png)
 
 ## Tech notes
 

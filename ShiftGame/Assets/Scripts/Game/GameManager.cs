@@ -53,6 +53,12 @@ public class GameManager : MonoBehaviour
     float fadeA = 1f;
     bool transitioning;
     const string PrefKey = "shift_unlocked";
+    const string CurrentKey = "shift_current";
+    int currentLevel;
+
+    public int Unlocked => unlocked;
+    public int CurrentLevel => currentLevel;
+    public int SelectedLevel => selectedLevel;
 
     // materials
     Material dayBlock, dayGhost, dayFaded, nightBlock, nightGhost, nightFaded;
@@ -75,12 +81,14 @@ public class GameManager : MonoBehaviour
 
         var hudGo = new GameObject("UI");
         hud = hudGo.AddComponent<Hud>();
+        hud.gm = this;
         hud.Build();
 
         sfx = gameObject.AddComponent<AudioFx>();
 
         unlocked = Mathf.Clamp(PlayerPrefs.GetInt(PrefKey, 1), 1, 9999);
-        selectedLevel = unlocked - 1;
+        currentLevel = Mathf.Clamp(PlayerPrefs.GetInt(CurrentKey, 0), 0, unlocked - 1);
+        selectedLevel = currentLevel;
     }
 
     public void DebugUnlock(int n)
@@ -480,23 +488,9 @@ public class GameManager : MonoBehaviour
         rig.pitch = 38f;
         rig.orbit = true;
         rig.Snap();
-        hud.titleRoot.SetActive(true);
-        hud.hudRoot.SetActive(false);
-        hud.HideMessage();
-        UpdateTitleLevel();
+        selectedLevel = Mathf.Clamp(currentLevel, 0, unlocked - 1);
+        hud.ShowTitle();
         titleShiftTimer = 0;
-    }
-
-    void UpdateTitleLevel()
-    {
-        var def = Levels.Get(selectedLevel);
-        string arrows = unlocked > 1 ? "<   " : "";
-        string arrowsR = unlocked > 1 ? "   >" : "";
-        string tag = def.generated ? "  (ENDLESS)" : "";
-        hud.titleLevel.text = $"{arrows}LEVEL {selectedLevel + 1}  -  {def.name.ToUpper()}{tag}{arrowsR}";
-        hud.titleSub.text = unlocked > Levels.HandmadeCount
-            ? $"Day and night are one key apart.     Best: level {unlocked}"
-            : "Day and night are one key apart.";
     }
 
     void StartLevel(int index, bool resetStats)
@@ -514,12 +508,10 @@ public class GameManager : MonoBehaviour
         shiftBuffer = 0;
         shardsCollected = 0;
         state = State.Playing;
-        hud.titleRoot.SetActive(false);
-        hud.hudRoot.SetActive(true);
-        hud.HideMessage();
-        var def = Levels.Get(index);
-        hud.levelTitle.text = def.generated ? $"{index + 1}. {def.name.ToUpper()}   -   ENDLESS" : $"{index + 1}. {def.name.ToUpper()}";
-        hud.SetHint(def.hint);
+        hud.ShowHud(index, Levels.Get(index));
+        currentLevel = index;
+        PlayerPrefs.SetInt(CurrentKey, currentLevel);
+        hud.SetStats(levelTime, levelDeaths);
         UpdateShardText();
         sfx.Play(sfx.levelStart, 0.7f, 0f);
     }
@@ -540,7 +532,7 @@ public class GameManager : MonoBehaviour
 
     void UpdateShardText()
     {
-        hud.shardText.text = shards.Count == 0 ? "PORTAL OPEN" : $"SHARDS  {shardsCollected} / {shards.Count}";
+        hud.SetShards(shardsCollected, shards.Count);
     }
 
     IEnumerator Transition(System.Action mid)
@@ -565,6 +557,7 @@ public class GameManager : MonoBehaviour
         shiftCooldown -= dt;
         UpdateAtmosphere();
 
+        Menu.GlobalLock = transitioning;
         if (!transitioning) fadeA = Mathf.MoveTowards(fadeA, 0f, Time.unscaledDeltaTime * 2.5f);
         var fc = hud.fade.color; fc.a = fadeA; hud.fade.color = fc;
         if (transitioning) return;
@@ -581,21 +574,7 @@ public class GameManager : MonoBehaviour
                     else StartCoroutine(Transition(() => StartLevel(levelIndex, false)));
                 }
                 break;
-            case State.Complete:
-                if (GameInput.ConfirmPressed && hud.msgRoot.activeSelf)
-                {
-                    sfx.Play(sfx.select, 0.6f);
-                    StartCoroutine(Transition(() => StartLevel(levelIndex + 1, true)));
-                }
-                break;
-            case State.Victory:
-                if (GameInput.ConfirmPressed)
-                {
-                    sfx.Play(sfx.select, 0.6f);
-                    StartCoroutine(Transition(EnterTitle));
-                }
-                break;
-            case State.Paused: UpdatePaused(); break;
+            // Complete and Paused are driven entirely by the menus in Hud
         }
     }
 
@@ -625,32 +604,18 @@ public class GameManager : MonoBehaviour
     void UpdateTitle(float dt)
     {
         titleShiftTimer += dt;
-        if (GameInput.ShiftPressed || titleShiftTimer > 3.5f)
+        bool pressed = GameInput.ShiftPressed;
+        if (pressed || titleShiftTimer > 3.5f)
         {
             titleShiftTimer = 0;
-            DoShift(PhaseState.Other(PhaseState.Current), levelCenter, GameInput.ShiftPressed);
-        }
-        if (unlocked > 1)
-        {
-            int prev = selectedLevel;
-            if (GameInput.LeftPressed) selectedLevel = (selectedLevel - 1 + unlocked) % unlocked;
-            if (GameInput.RightPressed) selectedLevel = (selectedLevel + 1) % unlocked;
-            if (GameInput.UpPressed) selectedLevel = Mathf.Min(unlocked - 1, selectedLevel + 10);
-            if (GameInput.DownPressed) selectedLevel = Mathf.Max(0, selectedLevel - 10);
-            if (prev != selectedLevel) { sfx.Play(sfx.select, 0.6f); UpdateTitleLevel(); }
-        }
-        if (GameInput.ConfirmPressed)
-        {
-            sfx.Play(sfx.select, 0.6f);
-            totalTime = 0; totalShifts = 0; totalDeaths = 0;
-            int idx = selectedLevel;
-            StartCoroutine(Transition(() => StartLevel(idx, true)));
+            DoShift(PhaseState.Other(PhaseState.Current), levelCenter, pressed);
         }
     }
 
     void UpdatePlaying(float dt)
     {
         levelTime += dt;
+        hud.SetStats(levelTime, levelDeaths);
         if (GameInput.PausePressed) { Pause(); return; }
         if (GameInput.RestartPressed)
         {
@@ -699,6 +664,7 @@ public class GameManager : MonoBehaviour
                 activeCheckpoint = cp;
                 sfx.Play(sfx.select, 0.8f, 0f);
                 hud.Flash(Palette.Shard, 0.08f);
+                hud.Toast("CHECKPOINT");
             }
         }
 
@@ -739,34 +705,81 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    void UpdatePaused()
-    {
-        if (GameInput.PausePressed || GameInput.ConfirmPressed) { Resume(); return; }
-        if (GameInput.RestartPressed)
-        {
-            Resume();
-            StartCoroutine(Transition(() => StartLevel(levelIndex, false)));
-            return;
-        }
-        if (GameInput.QuitToMenuPressed)
-        {
-            Resume();
-            StartCoroutine(Transition(EnterTitle));
-        }
-    }
-
     void Pause()
     {
         state = State.Paused;
         Time.timeScale = 0f;
-        hud.ShowMessage("PAUSED", "ESC  -  resume\nR  -  restart level\nQ  -  quit to title", "");
+        hud.ShowPause(levelIndex, Levels.Get(levelIndex));
     }
 
     void Resume()
     {
         Time.timeScale = 1f;
         state = State.Playing;
-        hud.HideMessage();
+        hud.HidePause();
+    }
+
+    // ------------------------------------------------------------------ UI actions (called by Hud menus)
+
+    /// <summary>Leaves pause / complete screens safely before a scene transition.</summary>
+    void LeaveMenus()
+    {
+        Time.timeScale = 1f;
+        if (player != null) player.controllable = false;
+        hud.HidePause();
+    }
+
+    void StartRun(int index)
+    {
+        LeaveMenus();
+        totalTime = 0; totalShifts = 0; totalDeaths = 0;
+        selectedLevel = index;
+        StartCoroutine(Transition(() => StartLevel(index, true)));
+    }
+
+    public void UiContinue() => StartRun(currentLevel);
+    public void UiPlaySelected() => StartRun(selectedLevel);
+    public void UiSelectLevel(int delta) => selectedLevel = Mathf.Clamp(selectedLevel + delta, 0, unlocked - 1);
+    public void UiQuit() => Application.Quit();
+
+    public void UiNewGame()
+    {
+        hud.Confirm("Start a new run from Level 1?\nYour best level stays unlocked in level select.", "YES, START OVER", () => StartRun(0), null);
+    }
+
+    public void UiPause() { if (state == State.Playing && !transitioning) Pause(); }
+    public void UiResume() { if (state == State.Paused) Resume(); }
+
+    public void UiRestartLevel()
+    {
+        LeaveMenus();
+        StartCoroutine(Transition(() => StartLevel(levelIndex, false)));
+    }
+
+    /// <summary>The "restart from level one" button: asks first, then starts a fresh run at level 1.</summary>
+    public void UiAskRestartFromOne()
+    {
+        if (transitioning || hud.ConfirmOpen) return;
+        if (state == State.Playing) Pause();
+        hud.Confirm("Restart from Level 1?\nYour current run will reset.", "YES, RESTART", () => StartRun(0), null);
+    }
+
+    public void UiMainMenu()
+    {
+        LeaveMenus();
+        StartCoroutine(Transition(EnterTitle));
+    }
+
+    public void UiNext()
+    {
+        LeaveMenus();
+        StartCoroutine(Transition(() => StartLevel(levelIndex + 1, true)));
+    }
+
+    public void UiReplayCompleted()
+    {
+        LeaveMenus();
+        StartCoroutine(Transition(() => StartLevel(levelIndex, true)));
     }
 
     // ------------------------------------------------------------------ actions
@@ -846,7 +859,6 @@ public class GameManager : MonoBehaviour
             portal.SetOpen(true, false);
             sfx.Play(sfx.portalOpen, 0.8f, 0f);
             SpawnShockwave(portalPos + Vector3.up * 0.2f, Color.white, 0.8f, 6f);
-            hud.shardText.text = "PORTAL OPEN";
         }
     }
 
@@ -889,6 +901,9 @@ public class GameManager : MonoBehaviour
             PlayerPrefs.Save();
         }
         selectedLevel = levelIndex + 1;
+        currentLevel = levelIndex + 1;
+        PlayerPrefs.SetInt(CurrentKey, currentLevel);
+        PlayerPrefs.Save();
         StartCoroutine(CompleteSequence());
     }
 
@@ -910,14 +925,13 @@ public class GameManager : MonoBehaviour
         SpawnShockwave(target, Color.white, 0.6f, 5f);
         hud.Flash(Color.white, 0.4f);
         yield return new WaitForSeconds(0.4f);
-        string body = $"Time   {FormatTime(levelTime)}\nShifts   {levelShifts}\nDeaths   {levelDeaths}";
         bool campaignEnd = levelIndex + 1 == Levels.HandmadeCount;
         if (campaignEnd)
-            hud.ShowMessage("CAMPAIGN COMPLETE",
-                $"Total time   {FormatTime(totalTime)}     Deaths   {totalDeaths}\n\nThe world keeps shifting.\nEndless levels begin now - each one harder.",
-                "Press ENTER to go deeper");
+            hud.ShowComplete("CAMPAIGN COMPLETE", "The world keeps shifting. Endless levels begin now.",
+                totalTime, totalShifts, totalDeaths, "GO DEEPER  -  LEVEL " + (levelIndex + 2), true);
         else
-            hud.ShowMessage($"LEVEL {levelIndex + 1} COMPLETE", body, $"Press ENTER for level {levelIndex + 2}");
+            hud.ShowComplete($"LEVEL {levelIndex + 1} COMPLETE", Levels.Get(levelIndex).name.ToUpper(),
+                levelTime, levelShifts, levelDeaths, $"NEXT  -  LEVEL {levelIndex + 2}", false);
     }
 
     static string FormatTime(float t)

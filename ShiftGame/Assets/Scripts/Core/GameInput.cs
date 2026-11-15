@@ -62,6 +62,10 @@ public static class GameInput
         (K != null && (K.escapeKey.wasPressedThisFrame || K.pKey.wasPressedThisFrame)) ||
         (G != null && G.startButton.wasPressedThisFrame);
 
+    public static bool BackPressed =>
+        (K != null && (K.escapeKey.wasPressedThisFrame || K.backspaceKey.wasPressedThisFrame)) ||
+        (G != null && (G.buttonEast.wasPressedThisFrame || G.startButton.wasPressedThisFrame));
+
     public static bool QuitToMenuPressed =>
         (K != null && (K.qKey.wasPressedThisFrame || K.backspaceKey.wasPressedThisFrame)) ||
         (G != null && G.buttonEast.wasPressedThisFrame);
