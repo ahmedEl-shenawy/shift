@@ -36,6 +36,14 @@ public class Hud : MonoBehaviour
     float hudTime, hintTime;
     bool portalOpen;
 
+    // boss bar
+    RectTransform bossBar;
+    Text bossName;
+    readonly List<Image> bossSegs = new List<Image>();
+    int bossHp, bossMax;
+    float bossPunch;
+    Image shardPillImg, statsPill;
+
     // toast
     RectTransform toast;
     Image toastBg;
@@ -162,7 +170,8 @@ public class Hud : MonoBehaviour
         knobMoon = UiKit.Img(knob, "Moon", UiKit.Moon, UiKit.Ink, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(32, 32));
 
         // ---- shards pill
-        shardPill = Card(t, "Shards", TR, TR, new Vector2(-36, -108), new Vector2(300, 54), 1.1f).rectTransform;
+        shardPillImg = Card(t, "Shards", TR, TR, new Vector2(-36, -108), new Vector2(300, 54), 1.1f);
+        shardPill = shardPillImg.rectTransform;
         shardLabel = UiKit.Txt(shardPill, "SHARDS", 20, new Color(1, 1, 1, 0.7f), TextAnchor.MiddleLeft, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(22, 0), new Vector2(120, 40), FontStyle.Bold, 0);
         for (int i = 0; i < 12; i++)
             pips.Add(UiKit.Img(shardPill, "Pip", UiKit.Diamond, Color.white, new Vector2(1, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(24, 32)));
@@ -178,6 +187,11 @@ public class Hud : MonoBehaviour
         portalChipBg = UiKit.Img(t, "PortalChip", UiKit.Rounded, Color.white, TR, TR, new Vector2(-36, -234), new Vector2(230, 46), 1.4f);
         portalChip = portalChipBg.rectTransform;
         UiKit.Txt(portalChip, "PORTAL OPEN", 22, UiKit.Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(230, 46), FontStyle.Bold, 0);
+
+        // ---- boss bar (top centre)
+        bossBar = Card(t, "BossBar", new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(-10, -26), new Vector2(580, 84), 1.2f, 0.78f).rectTransform;
+        bossName = UiKit.Txt(bossBar, "", 24, Color.white, TextAnchor.MiddleCenter, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -8), new Vector2(560, 34), FontStyle.Bold, 0);
+        bossBar.gameObject.SetActive(false);
 
         // ---- controls bar (bottom)
         var bar = UiKit.Rect("Controls", t, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 26), new Vector2(1600, 54));
@@ -357,7 +371,7 @@ public class Hud : MonoBehaviour
         selectorBtn.gameObject.SetActive(unlocked > 1);
         var def = Levels.Get(sel);
         selectorBtn.label.text = $"LEVEL {sel + 1}";
-        selectorBtn.sub.text = def.generated ? $"{def.name.ToUpper()}  -  ENDLESS" : def.name.ToUpper();
+        selectorBtn.sub.text = def.boss != null ? $"{def.name.ToUpper()}  -  BOSS" : def.generated ? $"{def.name.ToUpper()}  -  ENDLESS" : def.name.ToUpper();
         selectorBtn.onLeft = sel > 0 ? (Action)(() => { gm.UiSelectLevel(-1); RefreshTitle(); }) : null;
         selectorBtn.onRight = sel < unlocked - 1 ? (Action)(() => { gm.UiSelectLevel(1); RefreshTitle(); }) : null;
         bestText.text = unlocked > 1 ? $"BEST  -  LEVEL {unlocked}" : "";
@@ -367,8 +381,12 @@ public class Hud : MonoBehaviour
     {
         HideAll();
         hudRoot.SetActive(true);
-        levelBadge.text = def.generated
-            ? UiKit.Spaced($"LEVEL {index + 1}") + "   -   " + UiKit.Spaced("ENDLESS")
+        bossBar.gameObject.SetActive(false);
+        shardPill.gameObject.SetActive(def.boss == null);
+        levelBadge.text = def.boss != null
+            ? UiKit.Spaced($"LEVEL {index + 1}") + "   -   " + UiKit.Spaced("BOSS")
+            : def.generated
+            ? UiKit.Spaced($"LEVEL {index + 1}") + "   -   " + UiKit.Spaced(Themes.Get(def.theme).name)
             : UiKit.Spaced($"LEVEL {index + 1}/{Levels.HandmadeCount}");
         levelName.text = def.name.ToUpper();
         levelCard.sizeDelta = new Vector2(Mathf.Max(460, levelName.preferredWidth + 90, levelBadge.preferredWidth + 80), 116);
@@ -400,6 +418,37 @@ public class Hud : MonoBehaviour
         bool open = got >= total;
         if (open && !portalOpen && hudTime > 0.5f) Toast(total == 0 ? "PORTAL OPEN" : "ALL SHARDS  -  PORTAL OPEN");
         portalOpen = open;
+    }
+
+    public void ShowBoss(string name, int maxHp, int tier)
+    {
+        bossBar.gameObject.SetActive(true);
+        bossName.text = UiKit.Spaced(name) + "     " + UiKit.Spaced($"TIER {tier}");
+        foreach (var seg in bossSegs) Destroy(seg.gameObject);
+        bossSegs.Clear();
+        bossMax = maxHp;
+        float gap = 8, w = (520 - gap * (maxHp - 1)) / maxHp;
+        for (int i = 0; i < maxHp; i++)
+        {
+            var seg = UiKit.Img(bossBar, "Seg", UiKit.Rounded, Color.white, new Vector2(0.5f, 0), new Vector2(0, 0),
+                new Vector2(-260 + i * (w + gap), 14), new Vector2(w, 20), 3f);
+            bossSegs.Add(seg);
+        }
+        SetBossHp(maxHp);
+        bossPunch = 0;
+    }
+
+    public void SetBossHp(int hp)
+    {
+        if (hp < bossHp) bossPunch = 1;
+        bossHp = hp;
+    }
+
+    /// <summary>Opens the portal chip without shards (used when a boss is defeated).</summary>
+    public void MarkPortalOpen(string toastMsg)
+    {
+        portalOpen = true;
+        Toast(toastMsg);
     }
 
     public void SetStats(float time, int deaths)
@@ -509,6 +558,21 @@ public class Hud : MonoBehaviour
             nightLabel.color = new Color(1, 1, 1, b);
 
             portalChip.gameObject.SetActive(portalOpen);
+            if (bossBar.gameObject.activeSelf)
+            {
+                bossPunch = Mathf.MoveTowards(bossPunch, 0, dt * 2.5f);
+                bossName.color = Color.Lerp(new Color(0.85f, 0.7f, 1f), Color.white, bossPunch);
+                for (int i = 0; i < bossSegs.Count; i++)
+                {
+                    bool alive = i < bossHp;
+                    var c = alive ? Color.Lerp(new Color(0.75f, 0.45f, 1f), accent, 0.35f + 0.25f * Mathf.Sin(Time.unscaledTime * 3f + i)) : new Color(1, 1, 1, 0.12f);
+                    if (i == bossHp && bossPunch > 0) c = Color.Lerp(c, Color.white, bossPunch);
+                    bossSegs[i].color = c;
+                }
+                float s = 1f + bossPunch * 0.06f;
+                bossBar.localScale = new Vector3(s, s, 1);
+                if (bossHp <= 0 && bossPunch <= 0) bossBar.gameObject.SetActive(false);
+            }
             if (portalOpen)
             {
                 float pulse = 0.85f + 0.15f * Mathf.Sin(Time.unscaledTime * 4f);

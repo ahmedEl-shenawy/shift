@@ -10,6 +10,7 @@ public class AudioFx : MonoBehaviour
     public float musicVolume = 0.45f;
 
     public AudioClip jump, land, toNight, toDay, deny, collect, death, win, portalOpen, select, levelStart;
+    public AudioClip bossShot, bossRing, bossHit;
 
     void Awake()
     {
@@ -32,6 +33,9 @@ public class AudioFx : MonoBehaviour
         portalOpen = Synth.Arp("portal", new float[] { 67, 74, 79, 86 }, 0.08f, 0, 0.3f, 0.5f);
         select = Synth.Sweep("select", 600, 900, 0.06f, 2, 0.2f);
         levelStart = Synth.Arp("start", new float[] { 60, 67, 72 }, 0.07f, 2, 0.22f, 0.4f);
+        bossShot = Synth.Sweep("bossShot", 900, 380, 0.16f, 2, 0.16f, 0.15f);
+        bossRing = Synth.Sweep("bossRing", 220, 70, 0.7f, 0, 0.35f, 0.3f, 1.2f);
+        bossHit = Synth.Sweep("bossHit", 160, 45, 0.6f, 1, 0.35f, 0.5f, 1.4f);
 
         musicDay = gameObject.AddComponent<AudioSource>();
         musicNight = gameObject.AddComponent<AudioSource>();

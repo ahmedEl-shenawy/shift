@@ -20,15 +20,39 @@ Collect every shard to open the portal. 8 hand-made campaign levels teach every 
 
 ### Endless mode
 
-After level 8 the levels never stop: each one is generated procedurally and is harder than the last.
+After level 8 the levels never stop. Each one is generated procedurally and is harder than the last.
 
-- Levels are built from pieces that are solvable by construction: day/night bridges, mid-air leaps, phase staircases, gates with orb lanes, sentinel bridges, and spike fields (each spike field is checked with a search over cell and phase so a route always exists). Neutral pads link the pieces.
-- Difficulty rises with every level: more pieces, narrower bridges, more frequent phase flips, more and faster orbs, denser spikes, and more shards.
-- Checkpoint flags on every pad, so long levels don't send you back to the start.
-- Generation is seeded by the level number, so level 23 is the same for everyone.
-- On the title screen, Left/Right picks any level you've reached and Up/Down jumps 10 levels at a time.
+- **Winding layouts.** Levels are chains of sections that turn left and right. Each section is built in its own space, then rotated into place after a collision check, so paths never overlap.
+- **Nine section types**, each solvable by construction:
+  - day/night bridges
+  - mid-air leaps (with sideways hops later)
+  - switchback paths that change phase at every bend
+  - staircases up and down
+  - wall gates with orb lanes
+  - sentinel bridges
+  - orb **gauntlets**, where later lanes hold a day *and* a night orb, so you have to time it
+  - spike fields
+  - phase mazes
 
-![Endless level 30](Screenshots/endless_sentinels.png)
+  Spike fields and mazes are checked with a search over (cell, phase), so a route always exists.
+- **Themes.** Each level picks a look (Meadow, Dunes, Frost, Dusk, Ember) and a random starting phase.
+- **Difficulty rises** with every level: more sections, narrower bridges, more frequent flips, more and faster orbs, denser spikes, and more shards.
+- **Checkpoint flags** sit on every pad. Generation is seeded by the level number, so level 23 is the same for everyone.
+
+![Endless gauntlet](Screenshots/endless_gauntlet.png)
+
+### Boss fight every 10 levels: The Eclipse
+
+Levels 10, 20, 30 and so on are boss arenas. The Eclipse floats over a ring arena and:
+
+- fires volleys of **day and night projectiles**. Each one only hurts in its own phase.
+- sends out **shock-rings** across the floor. Shift to their opposite phase, or jump over them.
+- casts the **Eclipse**: it forcibly flips the world on you.
+- always telegraphs its next attack with the colour of its corona.
+
+To hurt it, grab the **light cells** that appear on the outer platforms. Each platform is reachable only across a day or a night bridge, and each cell you collect fires a beam at the boss. Every tier adds HP and faster, denser attacks. Defeat it to open the portal.
+
+![The Eclipse](Screenshots/boss_eclipse.png)
 
 The sky, lighting, sun angle, fog, particles, and music all crossfade when you shift. Each phase has its own soundtrack, and the two loops play in sync so the music shifts with the world.
 

@@ -35,6 +35,11 @@ public class GameManager : MonoBehaviour
     readonly List<Shard> shards = new List<Shard>();
     readonly List<Vector3> spikes = new List<Vector3>();
     readonly List<Checkpoint> checkpoints = new List<Checkpoint>();
+    BossController boss;
+    Theme theme = Themes.Get(0);
+    public BossController Boss => boss;
+    public Transform LevelRoot => levelRoot;
+    public static bool DebugInvulnerable;
     Checkpoint activeCheckpoint;
     Vector3 levelCenter;
     float levelSize, levelWidth;
@@ -232,7 +237,17 @@ public class GameManager : MonoBehaviour
     {
         if (levelRoot != null) Destroy(levelRoot.gameObject);
         blocks.Clear(); phaseBlocks.Clear(); orbs.Clear(); shards.Clear(); spikes.Clear(); checkpoints.Clear(); activeCheckpoint = null;
-        player = null; portal = null;
+        player = null; portal = null; boss = null;
+    }
+
+    void ApplyTheme(Theme th)
+    {
+        theme = th;
+        var stones = new[] { th.stoneA, th.stoneB, th.stoneC };
+        for (int i = 0; i < stoneMats.Length; i++) Mats.SetColor(stoneMats[i], stones[i], 0f);
+        Mats.SetColor(wallMat, th.wall, 0f);
+        var wf = th.wall; wf.a = 0.28f; wallFaded.SetColor("_BaseColor", wf);
+        var sf = th.stoneA; sf.a = 0.3f; stoneFaded.SetColor("_BaseColor", sf);
     }
 
     void BuildLevel(int index)
@@ -242,7 +257,8 @@ public class GameManager : MonoBehaviour
         orbSpeed = def.orbSpeed;
         grid = new LevelGrid(def);
         levelRoot = new GameObject("Level " + (index + 1)).transform;
-        PhaseState.Set(Phase.Day, true);
+        ApplyTheme(Themes.Get(def.theme));
+        PhaseState.Set(def.startPhase, true);
 
         Vector3 min = new Vector3(999, 999, 999), max = -min;
         for (int k = 0; k < grid.layers; k++)
@@ -274,7 +290,15 @@ public class GameManager : MonoBehaviour
         levelMin = min; levelMax = max;
 
         foreach (var b in phaseBlocks) b.Apply(true, Vector3.zero);
-        if (portal != null) portal.SetOpen(shards.Count == 0, true);
+        if (portal != null) portal.SetOpen(shards.Count == 0 && def.boss == null, true);
+
+        if (def.boss != null)
+        {
+            var bossGo = new GameObject("Boss");
+            bossGo.transform.SetParent(levelRoot, false);
+            boss = bossGo.AddComponent<BossController>();
+            boss.Init(this, def.boss);
+        }
 
         AddIslands(index);
         dayMotes.transform.position = levelCenter + Vector3.up * 2;
@@ -503,12 +527,20 @@ public class GameManager : MonoBehaviour
         rig.yaw = 30f;
         rig.pitch = 56f;
         rig.distance = 12.5f + Mathf.Clamp(levelWidth - 8, 0, 10) * 0.3f;
+        rig.biasWeight = 0f;
+        if (boss != null)
+        {
+            rig.distance = 18f;
+            rig.bias = boss.info.center + Vector3.up * 1.5f;
+            rig.biasWeight = 0.35f;
+        }
         rig.Snap();
         if (resetStats) { levelTime = 0; levelShifts = 0; levelDeaths = 0; }
         shiftBuffer = 0;
         shardsCollected = 0;
         state = State.Playing;
         hud.ShowHud(index, Levels.Get(index));
+        if (boss != null) hud.ShowBoss("THE ECLIPSE", boss.maxHp, boss.info.tier);
         currentLevel = index;
         PlayerPrefs.SetInt(CurrentKey, currentLevel);
         hud.SetStats(levelTime, levelDeaths);
@@ -526,13 +558,14 @@ public class GameManager : MonoBehaviour
         rig.target = player.transform;
         rig.Snap();
         shiftBuffer = 0;
+        if (boss != null) boss.ClearThreats();
         state = State.Playing;
         sfx.Play(sfx.levelStart, 0.6f, 0f);
     }
 
     void UpdateShardText()
     {
-        hud.SetShards(shardsCollected, shards.Count);
+        if (boss == null) hud.SetShards(shardsCollected, shards.Count);
     }
 
     IEnumerator Transition(System.Action mid)
@@ -581,7 +614,7 @@ public class GameManager : MonoBehaviour
     void UpdateAtmosphere()
     {
         float b = PhaseState.Smooth;
-        Color sky = Color.Lerp(Palette.DaySky, Palette.NightSky, b);
+        Color sky = Color.Lerp(theme.daySky, theme.nightSky, b);
         cam.backgroundColor = sky;
         RenderSettings.fogColor = sky;
         RenderSettings.ambientSkyColor = Color.Lerp(new Color(0.78f, 0.82f, 0.95f), new Color(0.34f, 0.36f, 0.66f), b);
@@ -590,7 +623,7 @@ public class GameManager : MonoBehaviour
         sun.color = Color.Lerp(new Color(1f, 0.92f, 0.8f), new Color(0.55f, 0.65f, 1f), b);
         sun.intensity = Mathf.Lerp(1.45f, 0.9f, b);
         sun.transform.rotation = Quaternion.Slerp(Quaternion.Euler(50, -40, 0), Quaternion.Euler(40, 120, 0), b);
-        Mats.SetColor(capMat, Color.Lerp(Palette.CapDay, Palette.CapNight, b), 0.05f * b);
+        Mats.SetColor(capMat, Color.Lerp(theme.capDay, theme.capNight, b), 0.05f * b);
         dayMoteMat.SetColor("_BaseColor", new Color(1f, 0.85f, 0.5f, 0.55f * (1 - b)));
         nightMoteMat.SetColor("_BaseColor", new Color(0.5f, 0.9f, 1f, 1f * b));
         if (player != null)
@@ -643,6 +676,13 @@ public class GameManager : MonoBehaviour
         {
             if (o.Lethal && (o.transform.position - chest).sqrMagnitude < 0.62f * 0.62f)
             { Die(true); return; }
+        }
+
+        // boss
+        if (boss != null)
+        {
+            boss.Tick(dt, player);
+            if (!DebugInvulnerable && boss.HitsPlayer(player)) { Die(true); return; }
         }
 
         // shards
@@ -864,6 +904,11 @@ public class GameManager : MonoBehaviour
 
     void Die(bool explode)
     {
+        if (DebugInvulnerable)
+        {
+            if (!explode) player.Teleport((activeCheckpoint != null ? activeCheckpoint.transform.position : startPos) + Vector3.up * 0.05f);
+            return;
+        }
         state = State.Dying;
         levelDeaths++;
         player.alive = false;
@@ -932,6 +977,55 @@ public class GameManager : MonoBehaviour
         else
             hud.ShowComplete($"LEVEL {levelIndex + 1} COMPLETE", Levels.Get(levelIndex).name.ToUpper(),
                 levelTime, levelShifts, levelDeaths, $"NEXT  -  LEVEL {levelIndex + 2}", false);
+    }
+
+    // ------------------------------------------------------------------ boss hooks
+
+    /// <summary>The Eclipse attack: the boss forces a world shift (skipped if a block would appear inside the player).</summary>
+    public void BossEclipse()
+    {
+        if (state != State.Playing || player == null || !player.alive) return;
+        Phase target = PhaseState.Other(PhaseState.Current);
+        Bounds pb = player.WorldBounds;
+        foreach (var b in phaseBlocks)
+            if (b.phase == target && b.bounds.Intersects(pb)) return;
+        DoShift(target, boss != null ? boss.info.center : player.transform.position, true);
+        hud.Flash(new Color(0.8f, 0.5f, 1f), 0.35f);
+        rig.Shake(0.5f);
+    }
+
+    public void BossTelegraph(string msg) => hud.Toast(msg);
+
+    public void BossCellCollected(Vector3 at)
+    {
+        sfx.Play(sfx.collect, 0.9f, 0f);
+        SpawnShockwave(at, Palette.Shard, 0.45f, 3f);
+        hud.Flash(Palette.Shard, 0.15f);
+    }
+
+    public void OnBossHit(int hp, int max, Vector3 at)
+    {
+        hud.SetBossHp(hp);
+        rig.Shake(0.6f);
+        hud.Flash(Color.white, 0.3f);
+        sfx.Play(sfx.bossHit, 1f, 0.05f);
+        SpawnDebris(at, shardMat, 12, 6f, 0.18f);
+        SpawnShockwave(at, Color.white, 0.6f, 6f);
+        if (hp > 0) hud.Toast($"DIRECT HIT  -  {hp} LEFT");
+    }
+
+    public void OnBossDefeated(Vector3 at)
+    {
+        SpawnDebris(at, debrisMat, 30, 9f, 0.3f);
+        SpawnDebris(at, shardMat, 20, 8f, 0.2f);
+        SpawnShockwave(at, Palette.DayBlock, 1.2f, 22f);
+        SpawnShockwave(at, Palette.NightBlock, 1.6f, 26f);
+        rig.Shake(1.2f);
+        hud.Flash(Color.white, 0.7f);
+        sfx.Play(sfx.death, 1f, 0f);
+        sfx.Play(sfx.win, 1f, 0f);
+        if (portal != null) portal.SetOpen(true, false);
+        hud.MarkPortalOpen("THE ECLIPSE FALLS  -  PORTAL OPEN");
     }
 
     static string FormatTime(float t)

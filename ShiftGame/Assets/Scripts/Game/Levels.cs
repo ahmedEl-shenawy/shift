@@ -17,6 +17,9 @@ public class LevelDef
     public float orbSpeed = 2.6f;
     public bool generated;
     public string solution;   // scripted route for the playtest bot (generated levels only)
+    public int theme;
+    public Phase startPhase = Phase.Day;
+    public BossInfo boss;     // non-null for boss levels
     public LevelDef(string name, string hint, params string[][] layers)
     {
         this.name = name; this.hint = hint; this.layers = layers;

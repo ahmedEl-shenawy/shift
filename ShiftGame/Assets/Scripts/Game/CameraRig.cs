@@ -7,6 +7,8 @@ public class CameraRig : MonoBehaviour
     public float yaw = 30f, pitch = 52f, distance = 13f;
     public bool orbit;
     public float minY = -1.5f;
+    public Vector3 bias;          // optional point to keep in frame (e.g. the boss)
+    public float biasWeight;
 
     Vector3 focus, focusVel;
     float shake;
@@ -24,6 +26,7 @@ public class CameraRig : MonoBehaviour
     Vector3 Desired()
     {
         Vector3 f = target != null ? target.position + Vector3.up * 0.6f : focusPoint;
+        if (target != null && biasWeight > 0) f = Vector3.Lerp(f, bias, biasWeight);
         f.y = Mathf.Max(f.y, minY);
         return f;
     }
