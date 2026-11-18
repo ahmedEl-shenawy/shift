@@ -20,6 +20,30 @@ public class BossInfo
     public readonly List<BossPlatform> platforms = new List<BossPlatform>();
     public int portalPlatform;
     public Vector3 portal;
+    /// <summary>Phase of the ring quadrants NE, NW, SW, SE (the four bridge points between them are neutral).</summary>
+    public readonly Phase[] quadrant = new Phase[4];
+    /// <summary>Route from the start pad to the arena: position + required phase (-1 = any, 0 = day, 1 = night).</summary>
+    public readonly List<(Vector3 pos, int phase)> entry = new List<(Vector3 pos, int phase)>();
+    /// <summary>Extra light-cell spots on the ring (quadrant centres, radius 4).</summary>
+    public readonly List<Vector3> ringSpots = new List<Vector3>();
+
+    public float AngleOf(Vector3 p)
+    {
+        float a = Mathf.Atan2(p.z - center.z, p.x - center.x) * Mathf.Rad2Deg;
+        return a < 0 ? a + 360f : a;
+    }
+
+    public static bool NeutralAngle(float deg)
+    {
+        float m = Mathf.Repeat(deg, 90f);
+        return Mathf.Min(m, 90f - m) <= 22f;
+    }
+
+    public Phase QuadrantPhase(float deg) => quadrant[(int)(Mathf.Repeat(deg, 360f) / 90f) % 4];
+
+    /// <summary>Number of places a light cell can appear: outer platforms, then ring spots.</summary>
+    public int CellSpotCount => platforms.Count + ringSpots.Count;
+    public Vector3 CellSpot(int i) => i < platforms.Count ? platforms[i].center : ringSpots[i - platforms.Count];
 }
 
 /// <summary>
@@ -758,16 +782,38 @@ public static class LevelGenerator
         b.Ent(0, 8, h, 'C');
         b.Go(0, 8);
 
-        // ring arena around (0, zc)
+        // ring arena around (0, zc): neutral "safe zones" at the four bridge points, day/night quadrants between
         const int zc = 14;
+        var info = new BossInfo { tier = tier, center = new Vector3(0, h, zc) };
+        int pi = p == 'D' ? 0 : 1;
+        info.entry.Add((new Vector3(0, h, 2.4f), -1));
+        info.entry.Add((new Vector3(0, h, 4.45f), pi));
+        info.entry.Add((new Vector3(0, h, 6.6f), 1 - pi));
+        info.entry.Add((new Vector3(0, h, 8f), -1));
+        char qp = RandPhase(rng);
+        var quadChars = new[] { qp, Other(qp), qp, Other(qp) };
+        for (int q = 0; q < 4; q++) info.quadrant[q] = quadChars[q] == 'D' ? global::Phase.Day : global::Phase.Night;
         for (int x = -6; x <= 6; x++)
         for (int z = zc - 6; z <= zc + 6; z++)
         {
             float dist = Mathf.Sqrt(x * x + (z - zc) * (z - zc));
-            if (dist >= 2.5f && dist <= 5.2f) b.Floor(x, z, h, '#');
+            if (dist < 2.5f || dist > 5.2f) continue;
+            float ang = Mathf.Atan2(z - zc, x) * Mathf.Rad2Deg;
+            if (ang < 0) ang += 360f;
+            char tile = BossInfo.NeutralAngle(ang) ? '#' : quadChars[(int)(ang / 90f) % 4];
+            b.Floor(x, z, h, tile);
         }
-
-        var info = new BossInfo { tier = tier, center = new Vector3(0, h, zc) };
+        for (int q = 0; q < 4; q++)
+        {
+            float a = (45f + 90f * q) * Mathf.Deg2Rad;
+            info.ringSpots.Add(new Vector3(Mathf.Cos(a) * 4f, h, zc + Mathf.Sin(a) * 4f));
+        }
+        // pylons framing the arena (decorative, out of reach)
+        foreach (var d in new[] { new Vector2Int(5, 5), new Vector2Int(-5, 5), new Vector2Int(5, -5), new Vector2Int(-5, -5) })
+        {
+            b.Floor(d.x, zc + d.y, h, '#');
+            b.Ent(d.x, zc + d.y, h, 'W');
+        }
         char pw = RandPhase(rng), pe = Other(pw), pn = RandPhase(rng);
         var dirs = new[] { new Vector2Int(-1, 0), new Vector2Int(1, 0), new Vector2Int(0, 1) };
         var phases = new[] { pw, pe, pn };
@@ -799,7 +845,7 @@ public static class LevelGenerator
         b.Boss();
 
         var def = ToDef(b, "THE ECLIPSE",
-            $"BOSS - tier {tier}. Grab the light cells on the outer platforms to strike the Eclipse. Shift or jump to dodge its attacks.",
+            $"BOSS - tier {tier}. Grab the light cells to strike the Eclipse. The ring has day and night quadrants - and the Eclipse can flip the world on you!",
             2.6f, info);
         def.theme = Themes.Boss;
         return def;
@@ -864,6 +910,8 @@ public static class LevelGenerator
             var off = new Vector3(minX, 0, minZ);
             boss.center -= off;
             boss.portal -= off;
+            for (int i = 0; i < boss.ringSpots.Count; i++) boss.ringSpots[i] -= off;
+            for (int i = 0; i < boss.entry.Count; i++) boss.entry[i] = (boss.entry[i].pos - off, boss.entry[i].phase);
             foreach (var p in boss.platforms)
             {
                 p.center -= off;

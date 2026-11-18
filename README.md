@@ -43,14 +43,17 @@ After level 8 the levels never stop. Each one is generated procedurally and is h
 
 ### Boss fight every 10 levels: The Eclipse
 
-Levels 10, 20, 30 and so on are boss arenas. The Eclipse floats over a ring arena and:
+Levels 10, 20, 30 and so on are boss arenas. The Eclipse drifts above a ring whose **quadrants alternate between day and night tiles**, with neutral safe zones at the four bridge points, so you shift as you run around it. Its attacks:
 
-- fires volleys of **day and night projectiles**. Each one only hurts in its own phase.
-- sends out **shock-rings** across the floor. Shift to their opposite phase, or jump over them.
-- casts the **Eclipse**: it forcibly flips the world on you.
-- always telegraphs its next attack with the colour of its corona.
+- **Projectile volleys** of day and night orbs. Each one only hurts in its own phase.
+- **Shock-rings** sweep across the floor. Shift to their opposite phase, or jump over them.
+- **Meteor rain:** glowing target circles fill up, then day/night meteors smash down on them.
+- **A sweeping laser** along the arena floor. Jump over it, or shift.
+- **The Eclipse:** it forcibly flips the world on you. Get caught in the wrong quadrant and you fall.
 
-To hurt it, grab the **light cells** that appear on the outer platforms. Each platform is reachable only across a day or a night bridge, and each cell you collect fires a beam at the boss. Every tier adds HP and faster, denser attacks. Defeat it to open the portal.
+Its corona telegraphs every attack. At half health it **enrages** and attacks faster and harder. To hurt it, grab **light cells**, which appear on the outer platforms (behind day or night bridges) and out on the ring. Each cell fires a beam at the boss.
+
+**Lives:** boss fights give you **3 hearts**. Each death costs one and respawns you at the arena checkpoint, and the boss keeps its damage. Lose all three and the boss level resets: the Eclipse is back at full health and your hearts refill.
 
 ![The Eclipse](Screenshots/boss_eclipse.png)
 

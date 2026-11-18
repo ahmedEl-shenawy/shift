@@ -94,14 +94,12 @@ public static class Bot
 
     // ---------------------------------------------------------------- boss fight AI
 
-    struct WP { public Vector3 pos; public bool needPhase; public Phase phase; public bool bridgeEntry; }
+    struct WP { public Vector3 pos; public bool needPhase; public Phase phase; public bool risky; }
 
     static WP Pt(Vector3 v) => new WP { pos = v };
 
     static Vector3 Ring(BossInfo info, float deg) =>
         info.center + new Vector3(Mathf.Cos(deg * Mathf.Deg2Rad), 0, Mathf.Sin(deg * Mathf.Deg2Rad)) * info.ringRadius;
-
-    static float AngleOf(BossInfo info, Vector3 p) => Mathf.Atan2(p.z - info.center.z, p.x - info.center.x) * Mathf.Rad2Deg;
 
     static float Flat(Vector3 a, Vector3 b) => new Vector2(a.x - b.x, a.z - b.z).magnitude;
 
@@ -116,54 +114,94 @@ public static class Bot
         return -1;
     }
 
-    static bool OnBridge(BossInfo info, Vector3 p)
+    /// <summary>True when standing on a phase tile (bridge or ring quadrant) - shifting there drops you.</summary>
+    static bool OnPhaseTile(BossInfo info, Vector3 p)
     {
         foreach (var pl in info.platforms)
             foreach (var c in pl.bridge)
                 if (Flat(p, c) < 0.62f) return true;
+        float d = Flat(p, info.center);
+        if (d > 2.3f && d < 5.4f && !BossInfo.NeutralAngle(info.AngleOf(p))) return true;
         return false;
+    }
+
+    /// <summary>Ring waypoints every 45 degrees from the current angle to the goal angle. Quadrant centres need their phase.</summary>
+    static void Arc(BossInfo info, List<WP> list, float from, float to)
+    {
+        float delta = Mathf.DeltaAngle(from, to);
+        float dir = Mathf.Sign(delta);
+        if (Mathf.Abs(delta) < 1f) return;
+        // first snap forward to the next multiple of 45 degrees
+        float a = dir > 0 ? Mathf.Ceil((from + 1f) / 45f) * 45f : Mathf.Floor((from - 1f) / 45f) * 45f;
+        int guard = 0;
+        while (guard++ < 10)
+        {
+            bool last = Mathf.Abs(Mathf.DeltaAngle(a, to)) < 1f;
+            bool neutral = BossInfo.NeutralAngle(a);
+            list.Add(new WP { pos = Ring(info, a), needPhase = !neutral, phase = neutral ? Phase.Day : info.QuadrantPhase(a), risky = !neutral });
+            if (last || Mathf.Sign(Mathf.DeltaAngle(a, to)) != dir) break;
+            a += 45f * dir;
+        }
     }
 
     static List<WP> Plan(BossInfo info, Vector3 p, int target, bool defeated)
     {
         var list = new List<WP>();
         int here = PlatformAt(info, p);
-        float start;
+        int nPlat = info.platforms.Count;
         if (here >= 0 && here == target)
         {
             list.Add(Pt(info.platforms[target].center));
             if (defeated) list.Add(Pt(info.portal));
             return list;
         }
+        float start;
         if (here >= 0)
         {
             var pl = info.platforms[here];
-            list.Add(new WP { pos = pl.bridge[1], needPhase = true, phase = pl.phase, bridgeEntry = true });
+            list.Add(new WP { pos = pl.bridge[1], needPhase = true, phase = pl.phase, risky = true });
             list.Add(new WP { pos = pl.bridge[0], needPhase = true, phase = pl.phase });
             list.Add(Pt(pl.ringPoint));
-            start = AngleOf(info, pl.ringPoint);
+            start = info.AngleOf(pl.ringPoint);
         }
         else if (Flat(p, info.center) > 5.6f)
         {
-            list.Add(Pt(Ring(info, -90)));
-            start = -90;
+            // back at the start (e.g. after running out of lives): take the warm-up bridge first
+            foreach (var e in info.entry)
+                if (e.pos.z > p.z - 0.2f)
+                    list.Add(new WP { pos = e.pos, needPhase = e.phase >= 0, phase = e.phase == 1 ? Phase.Night : Phase.Day });
+            list.Add(Pt(Ring(info, 270)));
+            start = 270;
         }
-        else start = AngleOf(info, p);
+        else
+        {
+            start = info.AngleOf(p);
+            // standing in a quadrant: keep its phase and walk to the next safe zone first
+        }
 
         if (target < 0)
         {
-            if (list.Count == 0) list.Add(Pt(Ring(info, Mathf.Round(start / 45f) * 45f)));
+            if (list.Count == 0)
+            {
+                float safe = Mathf.Round(start / 90f) * 90f;
+                list.Add(new WP { pos = Ring(info, safe) });
+            }
             return list;
         }
-        var tp = info.platforms[target];
-        float goal = AngleOf(info, tp.ringPoint);
-        float delta = Mathf.DeltaAngle(start, goal);
-        int steps = Mathf.Max(1, Mathf.CeilToInt(Mathf.Abs(delta) / 40f));
-        for (int i = 1; i <= steps; i++) list.Add(Pt(Ring(info, start + delta * i / steps)));
-        list.Add(new WP { pos = tp.bridge[0], needPhase = true, phase = tp.phase, bridgeEntry = true });
-        list.Add(new WP { pos = tp.bridge[1], needPhase = true, phase = tp.phase });
-        list.Add(Pt(tp.center));
-        if (defeated) list.Add(Pt(info.portal));
+        if (target < nPlat)
+        {
+            var tp = info.platforms[target];
+            Arc(info, list, start, info.AngleOf(tp.ringPoint));
+            list.Add(new WP { pos = tp.bridge[0], needPhase = true, phase = tp.phase, risky = true });
+            list.Add(new WP { pos = tp.bridge[1], needPhase = true, phase = tp.phase });
+            list.Add(Pt(tp.center));
+            if (defeated) list.Add(Pt(info.portal));
+        }
+        else
+        {
+            var spot = info.ringSpots[target - nPlat];
+            Arc(info, list, start, info.AngleOf(spot));
+        }
         return list;
     }
 
@@ -193,25 +231,54 @@ public static class Bot
         return false;
     }
 
+    static bool MeteorThreat(BossController boss, Phase ph, Vector3 p, float horizon)
+    {
+        foreach (var m in boss.meteors)
+            if (m.phase == ph && m.t < horizon + 0.2f && Flat(p, m.target) < 1.5f) return true;
+        return false;
+    }
+
+    static bool LaserThreat(BossController boss, Phase ph, Vector3 p, float horizon)
+    {
+        if (!boss.laserOn || boss.laserPhase != ph) return false;
+        if (p.y - boss.FloorY > 0.9f) return false;
+        float d = Flat(p, boss.info.center);
+        if (d < 2.0f || d > 7.2f) return false;
+        float gap = Mathf.DeltaAngle(boss.laserAngle, boss.info.AngleOf(p)) * Mathf.Sign(boss.laserSpeed);
+        float reach = boss.laserLive ? Mathf.Abs(boss.laserSpeed) * horizon + 14f : 30f;
+        return gap > -12f && gap < reach;
+    }
+
     static bool Threat(BossController boss, Phase ph, Vector3 p, float horizon) =>
-        ShotThreat(boss, ph, p, horizon) || RingThreat(boss, ph, p, horizon);
+        ShotThreat(boss, ph, p, horizon) || RingThreat(boss, ph, p, horizon) ||
+        MeteorThreat(boss, ph, p, horizon) || LaserThreat(boss, ph, p, horizon);
 
     static async Task<bool> BossFight()
     {
-        var boss = G.Boss;
-        if (boss == null) { log.AppendLine("  no boss"); return false; }
-        var info = boss.info;
-        float end = Time.time + 240f;
+        float end = Time.time + 300f;
         List<WP> route = null;
         int wi = 0, routeTarget = -99;
         bool routeDefeated = false;
         float shiftCd = 0, jumpCd = 0;
+        BossController boss = null;
         while (Time.time < end)
         {
             if (G.state == GameManager.State.Complete) return true;
-            if (!Playing) { GameInput.SimWorldMove = Vector3.zero; GameInput.SimJumpHeld = false; route = null; await Frame(); continue; }
+            if (!Playing || G.Boss != boss)
+            {
+                // dying / respawning / level reset after running out of lives
+                boss = G.Boss;
+                GameInput.SimWorldMove = Vector3.zero; GameInput.SimJumpHeld = false; route = null;
+                await Frame();
+                continue;
+            }
+            var info = boss.info;
             var p = P;
-            int target = boss.defeated ? info.portalPlatform : boss.cellPlatform;
+            if (Flat(p, info.center) > 5.6f && p.z < info.center.z - 5.5f)
+            {
+                // still in the entry corridor (after a reset): walk to the ring first, the warm-up bridge is behind us
+            }
+            int target = boss.defeated ? info.portalPlatform : boss.cellSpot;
             if (route == null || target != routeTarget || boss.defeated != routeDefeated)
             {
                 route = Plan(info, p, target, boss.defeated);
@@ -219,15 +286,15 @@ public static class Bot
             }
             float dt = Time.deltaTime;
             shiftCd -= dt; jumpCd -= dt;
-            bool onBridge = OnBridge(info, p);
+            bool onPhase = OnPhaseTile(info, p);
             var cur = PhaseState.Current;
             var other = cur == Phase.Day ? Phase.Night : Phase.Day;
 
             // dodge
-            if (Threat(boss, cur, p, 0.5f))
+            if (Threat(boss, cur, p, 0.55f))
             {
-                if (shiftCd <= 0 && !onBridge && !Threat(boss, other, p, 0.5f)) { GameInput.SimPressShift(); shiftCd = 0.3f; }
-                else if (jumpCd <= 0 && G.player.Grounded && RingThreat(boss, cur, p, 0.3f))
+                if (shiftCd <= 0 && !onPhase && !Threat(boss, other, p, 0.55f)) { GameInput.SimPressShift(); shiftCd = 0.3f; }
+                else if (jumpCd <= 0 && G.player.Grounded && (RingThreat(boss, cur, p, 0.3f) || LaserThreat(boss, cur, p, 0.25f)))
                 { GameInput.SimPressJump(); GameInput.SimJumpHeld = true; jumpCd = 0.7f; }
             }
             if (jumpCd < 0.35f) GameInput.SimJumpHeld = false;
@@ -240,22 +307,23 @@ public static class Bot
                 bool hold = false;
                 if (w.needPhase && PhaseState.Current != w.phase)
                 {
-                    if (!onBridge && shiftCd <= 0 && !Threat(boss, w.phase, p, 0.8f) && !boss.EclipsePending)
+                    if (!onPhase && shiftCd <= 0 && !Threat(boss, w.phase, p, 0.8f) && !boss.EclipsePending)
                     { GameInput.SimPressShift(); shiftCd = 0.3f; }
-                    hold = true;
+                    if (!onPhase) hold = true;   // already on a phase tile: never shift, keep going
                 }
-                else if (w.bridgeEntry && !onBridge && (boss.EclipsePending || Threat(boss, PhaseState.Current, p, 1.2f))) hold = true;
+                else if (w.risky && !onPhase && (boss.EclipsePending || Threat(boss, PhaseState.Current, p, 1.2f))) hold = true;
                 if (!hold)
                 {
                     var d = new Vector3(w.pos.x - p.x, 0, w.pos.z - p.z);
-                    if (d.magnitude < 0.15f) wi++;
+                    if (d.magnitude < 0.18f) wi++;
                     else move = d.normalized * Mathf.Clamp01(d.magnitude * 3f + 0.25f);
                 }
             }
             GameInput.SimWorldMove = move;
             await Frame();
         }
-        log.AppendLine($"  boss fight timed out (boss hp {boss.hp}/{boss.maxHp})");
+        var b = G.Boss;
+        log.AppendLine($"  boss fight timed out (boss hp {(b ? b.hp : -1)}/{(b ? b.maxHp : -1)})");
         return false;
     }
 

@@ -163,6 +163,14 @@ public static class UiKit
         Mathf.Min(Poly(p, new Vector2(0, 0.95f), new Vector2(0.17f, 0), new Vector2(0, -0.95f), new Vector2(-0.17f, 0)),
                   Poly(p, new Vector2(0.95f, 0), new Vector2(0, 0.17f), new Vector2(-0.95f, 0), new Vector2(0, -0.17f))));
 
+    public static Sprite Heart => Make("heart", 128, (p, px) =>
+        Mathf.Min(Mathf.Min(Circle(p - new Vector2(-0.36f, 0.28f), 0.42f), Circle(p - new Vector2(0.36f, 0.28f), 0.42f)),
+                  Poly(p, new Vector2(-0.76f, 0.12f), new Vector2(0.76f, 0.12f), new Vector2(0f, -0.84f))));
+
+    public static Sprite HeartOutline => Make("heartOutline", 128, (p, px) =>
+        Mathf.Abs(Mathf.Min(Mathf.Min(Circle(p - new Vector2(-0.33f, 0.26f), 0.36f), Circle(p - new Vector2(0.33f, 0.26f), 0.36f)),
+                  Poly(p, new Vector2(-0.67f, 0.12f), new Vector2(0.67f, 0.12f), new Vector2(0f, -0.74f)))) - 0.07f);
+
     public static Sprite Pill => Make("pill", 64, (p, px) => Box(p, new Vector2(1 - px, 0.5f), 0.45f));
 
     static float StarSdf(Vector2 p, float r, int n, float m)

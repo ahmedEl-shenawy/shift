@@ -44,6 +44,12 @@ public class Hud : MonoBehaviour
     float hudTime, hintTime;
     bool portalOpen;
 
+    // ---- lives (boss levels)
+    RectTransform livesChip;
+    readonly List<Image> hearts = new List<Image>();
+    readonly List<float> heartPunch = new List<float>();
+    int lives, livesMax;
+
     // ---- banner
     RectTransform banner;
     Image bannerBody, bannerLip, bannerChipBg;
@@ -372,6 +378,16 @@ public class Hud : MonoBehaviour
             pipPunch.Add(0);
         }
 
+        // ---- lives chip (boss levels use the shard slot)
+        livesChip = Chip(t, "Lives", TR, TR, new Vector2(-30, -108), new Vector2(240, 54), UiKit.Cream, out _);
+        UiKit.Txt(livesChip, "LIVES", 20, UiKit.Berry, TextAnchor.MiddleLeft, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(20, 0), new Vector2(100, 40), FontStyle.Bold, 0);
+        for (int i = 0; i < 5; i++)
+        {
+            hearts.Add(UiKit.Img(livesChip, "Heart", UiKit.Heart, UiKit.Berry, new Vector2(1, 0.5f), C, Vector2.zero, new Vector2(36, 36)));
+            heartPunch.Add(0);
+        }
+        livesChip.gameObject.SetActive(false);
+
         // ---- stats pill
         statsPill = Chip(t, "Stats", TR, TR, new Vector2(-30, -176), new Vector2(300, 50), UiKit.Cream, out _);
         UiKit.Img(statsPill, "Clock", UiKit.Clock, UiKit.Sky, new Vector2(0, 0.5f), C, new Vector2(32, 0), new Vector2(28, 28));
@@ -616,6 +632,7 @@ public class Hud : MonoBehaviour
         hudRoot.SetActive(true);
         bossBar.gameObject.SetActive(false);
         shardPill.gameObject.SetActive(def.boss == null);
+        livesChip.gameObject.SetActive(false);
         levelNum.text = (index + 1).ToString();
         levelNum.fontSize = index + 1 >= 100 ? 32 : 44;
         levelBadge.text = def.boss != null
@@ -702,6 +719,35 @@ public class Hud : MonoBehaviour
         }
         SetBossHp(maxHp);
         bossPunch = 0;
+    }
+
+    public void ShowLives(int max, int current)
+    {
+        livesMax = Mathf.Min(max, hearts.Count);
+        lives = current;
+        livesChip.gameObject.SetActive(true);
+        var w = new Vector2(104 + livesMax * 42, 54);
+        livesChip.sizeDelta = w;
+        foreach (RectTransform child in livesChip) if (child.name == "Lip" || child.name == "Body") child.sizeDelta = w;
+        for (int i = 0; i < hearts.Count; i++)
+        {
+            bool on = i < livesMax;
+            hearts[i].gameObject.SetActive(on);
+            if (!on) continue;
+            hearts[i].rectTransform.anchoredPosition = new Vector2(-30 - (livesMax - 1 - i) * 42, 1);
+            heartPunch[i] = i < current ? 1f : 0f;
+        }
+    }
+
+    public void SetLives(int current)
+    {
+        if (current < lives)
+            for (int i = Mathf.Max(0, current); i < lives && i < hearts.Count; i++)
+            {
+                heartPunch[i] = 1f;
+                Burst(FxPos(hearts[i].rectTransform), 14, 480f, 22f, new[] { UiKit.Berry, Color.white, UiKit.Peach }, new[] { UiKit.Heart, UiKit.Sparkle });
+            }
+        lives = current;
     }
 
     public void SetBossHp(int hp)
@@ -934,6 +980,20 @@ public class Hud : MonoBehaviour
             pips[i].rectTransform.localScale = new Vector3(s, s, 1);
             pips[i].rectTransform.localRotation = Quaternion.Euler(0, 0, pipPunch[i] * 360f);
         }
+
+        // hearts
+        if (livesChip.gameObject.activeSelf)
+            for (int i = 0; i < livesMax; i++)
+            {
+                heartPunch[i] = Mathf.MoveTowards(heartPunch[i], 0, dt * 2.5f);
+                bool alive = i < lives;
+                hearts[i].sprite = alive ? UiKit.Heart : UiKit.HeartOutline;
+                hearts[i].color = alive ? UiKit.Berry : new Color(0.2f, 0.12f, 0.3f, 0.3f);
+                float beat = alive ? 1f + 0.08f * Mathf.Max(0, Mathf.Sin(time * 6f - i * 0.6f)) : 1f;
+                float s = beat + Mathf.Sin(heartPunch[i] * Mathf.PI) * 0.5f;
+                hearts[i].rectTransform.localScale = new Vector3(s, s, 1);
+                hearts[i].rectTransform.localRotation = Quaternion.Euler(0, 0, Mathf.Sin(heartPunch[i] * 20f) * 20f * heartPunch[i]);
+            }
 
         // death counter shake
         deathShake = Mathf.MoveTowards(deathShake, 0, dt * 2f);

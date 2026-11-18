@@ -40,6 +40,10 @@ public class GameManager : MonoBehaviour
     public BossController Boss => boss;
     public Transform LevelRoot => levelRoot;
     public static bool DebugInvulnerable;
+    public const int BossLives = 3;
+    int bossLives;
+    bool keepLives;   // a death-restart keeps the remaining hearts; only fresh starts refill them
+    public int Lives => bossLives;
     Checkpoint activeCheckpoint;
     Vector3 levelCenter;
     float levelSize, levelWidth;
@@ -540,7 +544,12 @@ public class GameManager : MonoBehaviour
         shardsCollected = 0;
         state = State.Playing;
         hud.ShowHud(index, Levels.Get(index));
-        if (boss != null) hud.ShowBoss("THE ECLIPSE", boss.maxHp, boss.info.tier);
+        if (boss != null)
+        {
+            hud.ShowBoss("THE ECLIPSE", boss.maxHp, boss.info.tier);
+            if (!keepLives || bossLives <= 0) bossLives = BossLives;
+            hud.ShowLives(BossLives, bossLives);
+        }
         currentLevel = index;
         PlayerPrefs.SetInt(CurrentKey, currentLevel);
         hud.SetStats(levelTime, levelDeaths);
@@ -603,8 +612,17 @@ public class GameManager : MonoBehaviour
                 dyingTimer -= dt;
                 if (dyingTimer <= 0)
                 {
-                    if (activeCheckpoint != null) StartCoroutine(Transition(RespawnAtCheckpoint));
-                    else StartCoroutine(Transition(() => StartLevel(levelIndex, false)));
+                    if (boss != null && bossLives <= 0)
+                    {
+                        // out of lives: the whole boss level resets (boss back to full health, hearts refilled)
+                        StartCoroutine(Transition(() =>
+                        {
+                            StartLevel(levelIndex, false);
+                            hud.Toast("OUT OF LIVES!  THE ECLIPSE RECOVERS...", UiKit.Berry);
+                        }));
+                    }
+                    else if (activeCheckpoint != null) StartCoroutine(Transition(RespawnAtCheckpoint));
+                    else StartCoroutine(Transition(() => { keepLives = true; StartLevel(levelIndex, false); keepLives = false; }));
                 }
                 break;
             // Complete and Paused are driven entirely by the menus in Hud
@@ -912,6 +930,13 @@ public class GameManager : MonoBehaviour
         state = State.Dying;
         levelDeaths++;
         hud.OnDeath();
+        if (boss != null)
+        {
+            bossLives = Mathf.Max(0, bossLives - 1);
+            hud.SetLives(bossLives);
+            if (bossLives == 1) hud.Toast("LAST LIFE!", UiKit.Berry);
+            else if (bossLives > 1) hud.Toast($"{bossLives} LIVES LEFT", UiKit.Berry);
+        }
         player.alive = false;
         player.controllable = false;
         sfx.Play(sfx.death, 0.9f, 0.05f);
@@ -1004,7 +1029,15 @@ public class GameManager : MonoBehaviour
         rig.Shake(0.5f);
     }
 
-    public void BossTelegraph(string msg) => hud.Toast(msg);
+    public void BossTelegraph(string msg) => hud.Toast(msg, UiKit.Grape);
+
+    public void BossImpact(Vector3 at, Phase ph)
+    {
+        SpawnShockwave(at + Vector3.up * 0.1f, Palette.PhaseColor(ph), 0.5f, 3.2f);
+        SpawnDebris(at + Vector3.up * 0.3f, shardMat, 5, 4f, 0.12f);
+        rig.Shake(0.18f);
+        sfx.Play(sfx.land, 0.8f, 0.2f);
+    }
 
     public void BossCellCollected(Vector3 at)
     {
