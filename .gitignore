@@ -20,3 +20,6 @@ crashlytics-build.properties
 # Build output (upload these to itch.io, don't commit them)
 Builds/
 *.zip
+
+# Unity WebGL build intermediates
+ShiftGame/Data/
