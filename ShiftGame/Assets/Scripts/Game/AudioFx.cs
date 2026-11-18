@@ -11,6 +11,7 @@ public class AudioFx : MonoBehaviour
 
     public AudioClip jump, land, toNight, toDay, deny, collect, death, win, portalOpen, select, levelStart;
     public AudioClip bossShot, bossRing, bossHit;
+    public AudioClip pop, star1, star2, star3, whoosh, cheer;
 
     void Awake()
     {
@@ -36,6 +37,12 @@ public class AudioFx : MonoBehaviour
         bossShot = Synth.Sweep("bossShot", 900, 380, 0.16f, 2, 0.16f, 0.15f);
         bossRing = Synth.Sweep("bossRing", 220, 70, 0.7f, 0, 0.35f, 0.3f, 1.2f);
         bossHit = Synth.Sweep("bossHit", 160, 45, 0.6f, 1, 0.35f, 0.5f, 1.4f);
+        pop = Synth.Sweep("pop", 520, 980, 0.07f, 0, 0.22f, 0f, 2.5f);
+        star1 = Synth.Arp("star1", new float[] { 84, 91 }, 0.06f, 2, 0.24f, 0.35f);
+        star2 = Synth.Arp("star2", new float[] { 86, 93 }, 0.06f, 2, 0.24f, 0.35f);
+        star3 = Synth.Arp("star3", new float[] { 88, 95, 100 }, 0.06f, 2, 0.26f, 0.45f);
+        whoosh = Synth.Sweep("whoosh", 300, 1200, 0.28f, 0, 0.12f, 0.75f, 1.6f);
+        cheer = Synth.Arp("cheer", new float[] { 72, 76, 79, 84, 88, 91, 96 }, 0.05f, 2, 0.2f, 0.5f);
 
         musicDay = gameObject.AddComponent<AudioSource>();
         musicNight = gameObject.AddComponent<AudioSource>();
@@ -57,6 +64,17 @@ public class AudioFx : MonoBehaviour
         float b = PhaseState.Smooth;
         musicDay.volume = (1 - b) * musicVolume;
         musicNight.volume = b * musicVolume;
+    }
+
+    public void PlayPitch(AudioClip c, float vol, float pitch)
+    {
+        if (c == null) return;
+        var s = pool[next];
+        next = (next + 1) % pool.Length;
+        s.pitch = pitch;
+        s.volume = vol;
+        s.clip = c;
+        s.Play();
     }
 
     public void Play(AudioClip c, float vol = 1f, float pitchVar = 0.05f)

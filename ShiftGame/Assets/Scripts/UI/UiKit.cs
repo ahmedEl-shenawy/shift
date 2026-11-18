@@ -26,6 +26,22 @@ public static class UiKit
 
     public static Color Accent => Color.Lerp(new Color(1f, 0.70f, 0.32f), new Color(0.45f, 0.75f, 1f), PhaseState.Smooth);
 
+    // candy palette (joyful UI)
+    public static readonly Color Cream = new Color(1.00f, 0.975f, 0.93f);
+    public static readonly Color CreamDeep = new Color(0.93f, 0.89f, 0.84f);
+    public static readonly Color InkSoft = new Color(0.20f, 0.15f, 0.32f);
+    public static readonly Color Sunny = new Color(1.00f, 0.72f, 0.22f);
+    public static readonly Color Peach = new Color(1.00f, 0.55f, 0.38f);
+    public static readonly Color Berry = new Color(1.00f, 0.40f, 0.60f);
+    public static readonly Color Grape = new Color(0.62f, 0.44f, 1.00f);
+    public static readonly Color Sky = new Color(0.33f, 0.66f, 1.00f);
+    public static readonly Color Mint = new Color(0.30f, 0.84f, 0.62f);
+    public static readonly Color Slate = new Color(0.52f, 0.52f, 0.68f);
+    public static readonly Color[] Confetti = { Sunny, Peach, Berry, Grape, Sky, Mint, Color.white };
+
+    public static Color Darker(Color c, float f = 0.72f) => new Color(c.r * f, c.g * f, c.b * f, c.a);
+    public static Color Lighter(Color c, float f = 0.25f) => Color.Lerp(c, Color.white, f);
+
     // ------------------------------------------------------------------ SDF helpers
 
     static float Circle(Vector2 p, float r) => p.magnitude - r;
@@ -136,6 +152,31 @@ public static class UiKit
         d = Mathf.Min(d, Poly(p, tip, e + radial * 0.3f - tangent * 0.02f, e - radial * 0.3f - tangent * 0.02f));
         return d;
     });
+
+    /// <summary>Chunky rounded five-point star.</summary>
+    public static Sprite Star => Make("star", 128, (p, px) => StarSdf(new Vector2(p.x, p.y + 0.06f), 0.92f, 5, 2.4f) - 0.06f);
+
+    public static Sprite StarOutline => Make("starOutline", 128, (p, px) => Mathf.Abs(StarSdf(new Vector2(p.x, p.y + 0.06f), 0.86f, 5, 2.4f) - 0.04f) - 0.07f);
+
+    /// <summary>Four-point twinkle.</summary>
+    public static Sprite Sparkle => Make("sparkle", 96, (p, px) =>
+        Mathf.Min(Poly(p, new Vector2(0, 0.95f), new Vector2(0.17f, 0), new Vector2(0, -0.95f), new Vector2(-0.17f, 0)),
+                  Poly(p, new Vector2(0.95f, 0), new Vector2(0, 0.17f), new Vector2(-0.95f, 0), new Vector2(0, -0.17f))));
+
+    public static Sprite Pill => Make("pill", 64, (p, px) => Box(p, new Vector2(1 - px, 0.5f), 0.45f));
+
+    static float StarSdf(Vector2 p, float r, int n, float m)
+    {
+        float an = Mathf.PI / n, en = Mathf.PI / m;
+        var acs = new Vector2(Mathf.Cos(an), Mathf.Sin(an));
+        var ecs = new Vector2(Mathf.Cos(en), Mathf.Sin(en));
+        float a = Mathf.Atan2(p.x, p.y);
+        float bn = a - 2 * an * Mathf.Floor(a / (2 * an)) - an;
+        p = p.magnitude * new Vector2(Mathf.Cos(bn), Mathf.Abs(Mathf.Sin(bn)));
+        p -= r * acs;
+        p += ecs * Mathf.Clamp(-Vector2.Dot(p, ecs), 0, r * acs.y / ecs.y);
+        return p.magnitude * Mathf.Sign(p.x);
+    }
 
     public static Sprite Pause => Make("pause", 96, (p, px) =>
         Mathf.Min(Box(p - new Vector2(-0.3f, 0), new Vector2(0.16f, 0.62f), 0.08f), Box(p - new Vector2(0.3f, 0), new Vector2(0.16f, 0.62f), 0.08f)));

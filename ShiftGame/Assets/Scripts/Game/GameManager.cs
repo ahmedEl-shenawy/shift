@@ -911,6 +911,7 @@ public class GameManager : MonoBehaviour
         }
         state = State.Dying;
         levelDeaths++;
+        hud.OnDeath();
         player.alive = false;
         player.controllable = false;
         sfx.Play(sfx.death, 0.9f, 0.05f);
@@ -970,13 +971,20 @@ public class GameManager : MonoBehaviour
         SpawnShockwave(target, Color.white, 0.6f, 5f);
         hud.Flash(Color.white, 0.4f);
         yield return new WaitForSeconds(0.4f);
+        // star rating: cleared / no deaths / under par
+        float par = ParTime(levelIndex);
+        int stars = 1 + (levelDeaths == 0 ? 1 : 0) + (levelTime <= par ? 1 : 0);
+        var notes = new[] { "CLEARED!", "NO DEATHS", "UNDER " + FormatPar(par) };
+        if (stars > BestStars(levelIndex)) { PlayerPrefs.SetInt(StarsKey + levelIndex, stars); PlayerPrefs.Save(); }
+
+        var def = Levels.Get(levelIndex);
         bool campaignEnd = levelIndex + 1 == Levels.HandmadeCount;
         if (campaignEnd)
-            hud.ShowComplete("CAMPAIGN COMPLETE", "The world keeps shifting. Endless levels begin now.",
-                totalTime, totalShifts, totalDeaths, "GO DEEPER  -  LEVEL " + (levelIndex + 2), true);
+            hud.ShowComplete("CAMPAIGN COMPLETE!", "The world keeps shifting. Endless levels begin now!",
+                totalTime, totalShifts, totalDeaths, "GO DEEPER  -  LEVEL " + (levelIndex + 2), true, stars, notes, false);
         else
-            hud.ShowComplete($"LEVEL {levelIndex + 1} COMPLETE", Levels.Get(levelIndex).name.ToUpper(),
-                levelTime, levelShifts, levelDeaths, $"NEXT  -  LEVEL {levelIndex + 2}", false);
+            hud.ShowComplete(def.boss != null ? "ECLIPSE DEFEATED!" : $"LEVEL {levelIndex + 1} COMPLETE!", def.name.ToUpper(),
+                levelTime, levelShifts, levelDeaths, $"NEXT  -  LEVEL {levelIndex + 2}", false, stars, notes, def.boss != null);
     }
 
     // ------------------------------------------------------------------ boss hooks
@@ -1026,6 +1034,36 @@ public class GameManager : MonoBehaviour
         sfx.Play(sfx.win, 1f, 0f);
         if (portal != null) portal.SetOpen(true, false);
         hud.MarkPortalOpen("THE ECLIPSE FALLS  -  PORTAL OPEN");
+    }
+
+    const string StarsKey = "shift_stars_";
+    static readonly float[] HandmadePar = { 15, 20, 20, 30, 20, 35, 45, 60 };
+
+    public int BestStars(int index) => PlayerPrefs.GetInt(StarsKey + index, 0);
+
+    /// <summary>Par time for the third star: hand-tuned for the campaign, estimated from the solution for endless levels.</summary>
+    float ParTime(int index)
+    {
+        if (index < Levels.HandmadeCount) return HandmadePar[index];
+        var def = Levels.Get(index);
+        if (def.boss != null) return 50f + 15f * def.boss.tier;
+        int go = 0, jump = 0, orb = 0;
+        foreach (var raw in def.solution.Split(';'))
+        {
+            var c = raw.Trim();
+            if (c.StartsWith("go ")) go++;
+            else if (c.StartsWith("jump ")) jump++;
+            else if (c.StartsWith("orbfar")) orb++;
+        }
+        float par = 10f + 0.75f * go + 0.7f * jump + 3f * orb;
+        return Mathf.Ceil(par / 5f) * 5f;
+    }
+
+    static string FormatPar(float t)
+    {
+        int m = (int)(t / 60);
+        int s = Mathf.RoundToInt(t - m * 60);
+        return $"{m}:{s:00}";
     }
 
     static string FormatTime(float t)

@@ -69,7 +69,10 @@ The sky, lighting, sun angle, fog, particles, and music all crossfade when you s
 
 Menus work with the mouse, the keyboard (W/S or arrows, Enter, Esc) and a gamepad. The title screen has Continue, a level select for every level you have reached, and New Game. The pause menu can restart the level, restart the whole run from Level 1 (it asks first), or return to the title.
 
+Every level earns **1 to 3 stars**: one for clearing it, one for no deaths, and one for beating the par time. Your best stars are saved and shown in level select. The UI is drawn entirely in code in a bright "candy" style: 3D buttons that bounce and wiggle, confetti, level banners that swoop in, and sparkles when you flip the world or grab a shard.
+
 ![Title menu](Screenshots/ui_title.png)
+![Level complete](Screenshots/ui_complete.png)
 
 ## Tech notes
 
