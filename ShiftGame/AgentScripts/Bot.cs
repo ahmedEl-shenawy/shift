@@ -311,6 +311,40 @@ public static class Bot
         return await Run(level, sb.ToString()) + " theme=" + Themes.Get(Levels.Get(level).theme).name;
     }
 
+    /// <summary>Dies once on purpose (walks off the level), waits for the respawn, then plays the script.</summary>
+    public static async Task<string> DieThenRun(int level, string offEdgeX, string offEdgeZ, string script)
+    {
+        log = new StringBuilder();
+        GameInput.SimActive = true;
+        try
+        {
+            G.DebugStartLevel(level);
+            await Wait(0.4f);
+            await Go(F(offEdgeX), F(offEdgeZ), 4f);          // walk off the edge -> fall -> death
+            float until = Time.realtimeSinceStartup + 25f;
+            while (Time.realtimeSinceStartup < until && (!Playing || G.player == null || !G.player.alive || G.player.transform.position.y < -1f)) await Frame();
+            await Wait(1.0f);
+            log.AppendLine($"  after death: {G.DebugDescribe()}");
+        }
+        finally { GameInput.SimActive = false; GameInput.SimWorldMove = Vector3.zero; }
+        // continue without restarting the level
+        GameInput.SimActive = true;
+        try
+        {
+            foreach (var raw in script.Split(';'))
+            {
+                var a = raw.Trim().Split(' ');
+                if (a[0] == "go") await Go(F(a[1]), F(a[2]));
+                else if (a[0] == "phase" || a[0] == "shift") { GameInput.SimPressShift(); await Wait(0.3f); }
+                if (G.state == GameManager.State.Complete) break;
+            }
+            await Wait(0.3f);
+            log.AppendLine($"  end {G.DebugDescribe()}");
+        }
+        finally { GameInput.SimActive = false; GameInput.SimWorldMove = Vector3.zero; }
+        return log.ToString();
+    }
+
     public static async Task<string> RunGenerated(int level) => await Run(level, Levels.Get(level).solution);
 
     /// <summary>Plays generated levels [from, to) and summarises the results.</summary>

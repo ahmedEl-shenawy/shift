@@ -100,7 +100,7 @@ public class Hud : MonoBehaviour
     readonly bool[] starPopped = new bool[3];
     float[] statTarget = new float[3];
     bool statIsTime;
-    int starsEarned;
+    readonly bool[] starEarned = new bool[3];
     MenuButton nextBtn;
     float completeT;
 
@@ -765,7 +765,7 @@ public class Hud : MonoBehaviour
 
     /// <summary>Level complete card with a 1-3 star rating, counting-up stats and confetti.</summary>
     public void ShowComplete(string header, string sub, float time, int shifts, int deaths, string nextLabel, bool totals,
-        int stars, string[] notes, bool boss)
+        bool[] earned, string[] notes, bool boss)
     {
         completeRoot.SetActive(true);
         completeHeader.text = header;
@@ -780,13 +780,13 @@ public class Hud : MonoBehaviour
         statLabels[1].text = totals ? "TOTAL SHIFTS" : "SHIFTS";
         statLabels[2].text = totals ? "TOTAL DEATHS" : "DEATHS";
         for (int i = 0; i < 3; i++) statValues[i].text = i == 0 ? "00:00.0" : "0";
-        starsEarned = stars;
         for (int i = 0; i < 3; i++)
         {
+            starEarned[i] = earned != null && i < earned.Length && earned[i];
             starPopped[i] = false;
             starImgs[i].rectTransform.localScale = Vector3.zero;
             starNotes[i].text = notes != null && i < notes.Length ? notes[i] : "";
-            starNotes[i].color = new Color(UiKit.InkSoft.r, UiKit.InkSoft.g, UiKit.InkSoft.b, i < stars ? 0.9f : 0.35f);
+            starNotes[i].color = new Color(UiKit.InkSoft.r, UiKit.InkSoft.g, UiKit.InkSoft.b, starEarned[i] ? 0.9f : 0.35f);
         }
         nextBtn.label.text = nextLabel;
         completeT = 0;
@@ -1075,7 +1075,7 @@ public class Hud : MonoBehaviour
         {
             float popAt = 0.55f + i * 0.38f;
             var rt = starImgs[i].rectTransform;
-            bool earned = i < starsEarned;
+            bool earned = starEarned[i];
             if (completeT >= popAt)
             {
                 float k = Mathf.Clamp01((completeT - popAt) / 0.45f);

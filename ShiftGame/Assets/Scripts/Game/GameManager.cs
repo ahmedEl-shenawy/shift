@@ -973,7 +973,9 @@ public class GameManager : MonoBehaviour
         yield return new WaitForSeconds(0.4f);
         // star rating: cleared / no deaths / under par
         float par = ParTime(levelIndex);
-        int stars = 1 + (levelDeaths == 0 ? 1 : 0) + (levelTime <= par ? 1 : 0);
+        // each star is its own criterion - they are not earned "in order"
+        var earned = new[] { true, levelDeaths == 0, levelTime <= par };
+        int stars = (earned[0] ? 1 : 0) + (earned[1] ? 1 : 0) + (earned[2] ? 1 : 0);
         var notes = new[] { "CLEARED!", "NO DEATHS", "UNDER " + FormatPar(par) };
         if (stars > BestStars(levelIndex)) { PlayerPrefs.SetInt(StarsKey + levelIndex, stars); PlayerPrefs.Save(); }
 
@@ -981,10 +983,10 @@ public class GameManager : MonoBehaviour
         bool campaignEnd = levelIndex + 1 == Levels.HandmadeCount;
         if (campaignEnd)
             hud.ShowComplete("CAMPAIGN COMPLETE!", "The world keeps shifting. Endless levels begin now!",
-                totalTime, totalShifts, totalDeaths, "GO DEEPER  -  LEVEL " + (levelIndex + 2), true, stars, notes, false);
+                totalTime, totalShifts, totalDeaths, "GO DEEPER  -  LEVEL " + (levelIndex + 2), true, earned, notes, false);
         else
             hud.ShowComplete(def.boss != null ? "ECLIPSE DEFEATED!" : $"LEVEL {levelIndex + 1} COMPLETE!", def.name.ToUpper(),
-                levelTime, levelShifts, levelDeaths, $"NEXT  -  LEVEL {levelIndex + 2}", false, stars, notes, def.boss != null);
+                levelTime, levelShifts, levelDeaths, $"NEXT  -  LEVEL {levelIndex + 2}", false, earned, notes, def.boss != null);
     }
 
     // ------------------------------------------------------------------ boss hooks
